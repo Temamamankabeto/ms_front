@@ -37,11 +37,11 @@ Route::middleware(['auth:sanctum', EnforceIdleSessionTimeout::class])->group(fun
 
 Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('permission:applications.summary');
-    Route::apiResource('service-forms', ServiceFormController::class)->middleware('permission:service_forms.update');
-    Route::apiResource('service-form-sections', ServiceFormSectionController::class)->middleware('permission:service_forms.update');
-    Route::apiResource('service-form-steps', ServiceFormStepController::class)->middleware('permission:service_forms.update');
-    Route::apiResource('service-form-fields', ServiceFormFieldController::class)->middleware('permission:service_forms.update');
-    Route::apiResource('service-form-field-conditions', ServiceFormFieldConditionController::class)->middleware('permission:service_forms.update');
+    Route::apiResource('service-forms', ServiceFormController::class)->names('admin.service-forms')->middleware('permission:service_forms.update');
+    Route::apiResource('service-form-sections', ServiceFormSectionController::class)->names('admin.service-form-sections')->middleware('permission:service_forms.update');
+    Route::apiResource('service-form-steps', ServiceFormStepController::class)->names('admin.service-form-steps')->middleware('permission:service_forms.update');
+    Route::apiResource('service-form-fields', ServiceFormFieldController::class)->names('admin.service-form-fields')->middleware('permission:service_forms.update');
+    Route::apiResource('service-form-field-conditions', ServiceFormFieldConditionController::class)->names('admin.service-form-field-conditions')->middleware('permission:service_forms.update');
     Route::get('/service-applications', [ServiceApplicationController::class, 'index'])->middleware('permission:service_applications.read');
     Route::get('/service-applications/{serviceApplication}', [ServiceApplicationController::class, 'show'])->middleware('permission:service_applications.read');
     Route::put('/service-applications/{serviceApplication}', [ServiceApplicationController::class, 'update'])->middleware('permission:service_applications.update');

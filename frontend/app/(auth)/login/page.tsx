@@ -81,7 +81,8 @@ function LoginContent() {
 
       authService.saveSession(response);
 
-      const role = getUserRole(response.user);
+      const user = response.user ?? (await authService.me());
+      const role = getUserRole(user);
 
       toast.success("Logged in successfully");
 

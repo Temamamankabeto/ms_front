@@ -35,6 +35,7 @@ import {
 import { getDashboardForRole } from "@/config/dashboard.config";
 import { useCustomerApplications } from "@/hooks/customer/use-customer-applications";
 import { useDashboardOverview } from "@/hooks/dashboard/use-dashboard";
+import { authService } from "@/services/auth/auth.service";
 
 function numberValue(value: unknown) {
   return Number(value || 0);
@@ -82,12 +83,19 @@ const statusCards = [
 ];
 
 export default function DashboardPage() {
-  const { data, isLoading, error } = useDashboardOverview();
+  const storedUser = authService.getStoredUser();
+  const storedRole = String(storedUser?.role ?? storedUser?.roles?.[0] ?? "").toLowerCase();
+  const isStoredCustomer = storedRole.includes("customer");
+
+  const { data, isLoading, error } = useDashboardOverview({
+    enabled: !isStoredCustomer,
+  });
+
   const { data: recentData, isLoading: recentLoading } = useCustomerApplications({
     page: 1,
   });
 
-  if (isLoading) {
+  if (!isStoredCustomer && isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -95,7 +103,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (error || !data) {
+  if (!isStoredCustomer && (error || !data)) {
     return (
       <div className="rounded-2xl border bg-card p-6 text-sm text-red-600">
         Failed to load dashboard.
@@ -103,11 +111,26 @@ export default function DashboardPage() {
     );
   }
 
-  const dashboard = getDashboardForRole(data.profile.role);
+  const profile = data?.profile ?? {
+    id: Number(storedUser?.id ?? 0),
+    name: storedUser?.name ?? "Customer",
+    email: storedUser?.email ?? null,
+    phone: storedUser?.phone ?? null,
+    avatar_url: storedUser?.profile_image_url ?? storedUser?.photo_url ?? null,
+    role: storedRole || "customer",
+    role_label: "Customer",
+    location_level: storedUser?.location_level ?? null,
+    scope_label: "Customer",
+    city: storedUser?.city?.name ?? null,
+    subcity: storedUser?.subcity?.name ?? null,
+    woreda: storedUser?.woreda?.name ?? null,
+  };
+
+  const dashboard = getDashboardForRole(profile.role);
   const Icon = dashboard.icon;
-  const status = data.status_counts || {};
-  const modules = data.module_counts || {};
-  const isCustomer = String(data.profile.role).toLowerCase().includes("customer");
+  const status = data?.status_counts || recentData?.meta?.status_counts || {};
+  const modules = data?.module_counts || {};
+  const isCustomer = String(profile.role).toLowerCase().includes("customer");
 
   if (!isCustomer) {
     return <RoleBasedDashboard />;
@@ -202,7 +225,7 @@ export default function DashboardPage() {
           <div>
             <p className="text-sm text-white/75">City Building</p>
             <h1 className="mt-2 text-2xl font-bold md:text-3xl">
-              Welcome back, {data.profile.name}! 👋
+              Welcome back, {profile.name}! 👋
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-white/85">
               Track your applications, follow office decisions, and access your

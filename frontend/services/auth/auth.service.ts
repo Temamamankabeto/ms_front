@@ -65,7 +65,11 @@ export const authService = {
   async login(credentials: { email: string; password: string }) {
     const response = await api.post("/auth/login", credentials);
     const loginResponse = normalizeLoginResponse(unwrap<LoginResponse>(response));
-    const token = loginResponse.token ?? loginResponse.access_token ?? loginResponse.data?.token ?? loginResponse.data?.access_token;
+    const token =
+      loginResponse.token ??
+      loginResponse.access_token ??
+      loginResponse.data?.token ??
+      loginResponse.data?.access_token;
 
     if (token) {
       saveAccessToken(token);
@@ -84,7 +88,11 @@ export const authService = {
   async registerCustomer(payload: CustomerRegisterPayload) {
     const response = await api.post("/auth/register", payload);
     const registerResponse = normalizeLoginResponse(unwrap<LoginResponse>(response));
-    const token = registerResponse.token ?? registerResponse.access_token ?? registerResponse.data?.token ?? registerResponse.data?.access_token;
+    const token =
+      registerResponse.token ??
+      registerResponse.access_token ??
+      registerResponse.data?.token ??
+      registerResponse.data?.access_token;
 
     if (token) {
       saveAccessToken(token);
@@ -110,7 +118,11 @@ export const authService = {
   async faydaLogin(code: string) {
     const response = await api.post("/auth/fayda/callback", { code });
     const faydaResponse = normalizeLoginResponse(unwrap<LoginResponse>(response));
-    const token = faydaResponse.token ?? faydaResponse.access_token ?? faydaResponse.data?.token ?? faydaResponse.data?.access_token;
+    const token =
+      faydaResponse.token ??
+      faydaResponse.access_token ??
+      faydaResponse.data?.token ??
+      faydaResponse.data?.access_token;
 
     if (token) {
       saveAccessToken(token);
@@ -158,10 +170,10 @@ export const authService = {
     if (token) {
       saveAccessToken(token);
     }
-    currentUser = user;
-    currentRoles = response.roles ?? response.data?.roles ?? user?.roles ?? (user?.role ? [user.role] : []);
-    currentPermissions = response.permissions ?? response.data?.permissions ?? user?.permissions ?? [];
-    if (currentUser) {
+    if (user) {
+      currentUser = user;
+      currentRoles = response.roles ?? response.data?.roles ?? user?.roles ?? (user?.role ? [user.role] : []);
+      currentPermissions = response.permissions ?? response.data?.permissions ?? user?.permissions ?? [];
       currentUser = { ...currentUser, roles: currentRoles, permissions: currentPermissions };
     }
   },

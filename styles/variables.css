@@ -1,0 +1,39 @@
+/* Project-level variables can be extended here. Main ShadCN CSS variables live in styles/tailwind.css. */
+
+/* ------------------------------------------------------------------ */
+/* Sidebar Theme Tokens (ShadCN-compatible semantic variables)         */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* Sidebar base */
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 222.2 47.4% 11.2%;
+
+  /* Sidebar accents */
+  --sidebar-accent: 210 40% 96.1%;
+  --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+
+  /* Sidebar primary */
+  --sidebar-primary: 222.2 47.4% 11.2%;
+  --sidebar-primary-foreground: 210 40% 98%;
+
+  /* Sidebar borders */
+  --sidebar-border: 214.3 31.8% 91.4%;
+}
+
+.dark {
+  /* Sidebar base */
+  --sidebar: 222.2 47.4% 11.2%;
+  --sidebar-foreground: 210 40% 98%;
+
+  /* Sidebar accents */
+  --sidebar-accent: 217.2 32.6% 17.5%;
+  --sidebar-accent-foreground: 210 40% 98%;
+
+  /* Sidebar primary */
+  --sidebar-primary: 210 40% 98%;
+  --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+
+  /* Sidebar borders */
+  --sidebar-border: 217.2 32.6% 17.5%;
+}

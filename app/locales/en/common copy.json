@@ -1,0 +1,35 @@
+{
+  "home": "Home Page",
+  "about_us": "About Us",
+  "service_provider": "Service Provider",
+  "services": "Services",
+  "resources": "Resources",
+  "news": "News",
+  "contacts": "Contacts",
+
+  "sign_in": "Sign In",
+  "create_account": "Create Account",
+
+  "hero_title": "eService for ensuring good governance",
+
+  "search": "Search",
+
+  "our_services": "Our Services",
+  "view_all": "View All",
+
+  "city_services": "City Services",
+  "city_services_desc": "Services provided at city administration",
+
+  "sub_city_services": "Sub City Services",
+  "sub_city_services_desc": "Services provided at sub city level",
+
+  "woreda_services": "Woreda Services",
+  "woreda_services_desc": "Services provided at woreda level",
+
+  "contact_us": "Contact Us",
+  "name": "Name",
+  "email": "Email",
+  "message": "Message",
+  "send_message": "Send Message",
+  "sending": "Sending..."
+}

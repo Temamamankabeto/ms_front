@@ -1,10 +1,10 @@
 import type { NextConfig } from "next";
 
-const backendApiUrl = "http://127.0.0.1:8000/api";
+const backendApiUrl = "https://mesobbackend.adamacity.gov.et/api";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: [
-    "http://127.0.0.1:3000",
+    "https://mesob.adamacity.gov.et/",
     "http://localhost:3000",
   ],
 

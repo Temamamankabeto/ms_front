@@ -1,0 +1,53 @@
+name: IP-Based Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy via IP Address
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_IP: ${{ secrets.SSH_IP }}  # Use IP instead of hostname
+          SSH_USER: ${{ secrets.SSH_USER }}
+          REMOTE_PATH: ${{ secrets.REMOTE_PATH }}
+        run: |
+          echo "Starting deployment to IP: $SSH_IP"
+          
+          # Setup SSH key
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
+          # Deploy using IP address directly
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 $SSH_USER@$SSH_IP "
+            cd '$REMOTE_PATH' && 
+            echo 'Current directory: $(pwd)' &&
+            echo 'Pulling latest changes...' &&
+            git pull origin main &&
+            echo 'Installing dependencies...' &&
+            composer install --no-interaction --prefer-dist --optimize-autoloader &&
+            echo 'Running migrations...' &&
+            php artisan migrate --force &&
+            echo 'Clearing caches...' &&
+            php artisan config:clear &&
+            php artisan route:clear &&
+            php artisan view:clear &&
+            php artisan config:cache &&
+            php artisan route:cache &&
+            php artisan view:cache &&
+            echo 'Setting permissions...' &&
+            chmod -R 755 storage bootstrap/cache &&
+            echo 'Optimizing application...' &&
+            php artisan optimize &&
+            echo 'Deployment completed successfully!'
+          "
+          
+          # Cleanup
+          rm -f ~/.ssh/deploy_key

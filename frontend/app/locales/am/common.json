@@ -1,0 +1,35 @@
+{
+  "home": "መነሻ",
+  "about_us": "ስለ እኛ",
+  "service_provider": "አገልግሎት ሰጪ",
+  "services": "አገልግሎቶች",
+  "resources": "መረጃዎች",
+  "news": "ዜና",
+  "contacts": "ያግኙን",
+
+  "sign_in": "ግባ",
+  "create_account": "መለያ ፍጠር",
+
+  "hero_title": "መልካም አስተዳደርን ለማረጋገጥ የኢ-አገልግሎት ስርዓት",
+
+  "search": "ፈልግ",
+
+  "our_services": "የእኛ አገልግሎቶች",
+  "view_all": "ሁሉንም ይመልከቱ",
+
+  "city_services": "የከተማ አገልግሎቶች",
+  "city_services_desc": "በከተማ አስተዳደር የሚሰጡ አገልግሎቶች",
+
+  "sub_city_services": "የክፍለ ከተማ አገልግሎቶች",
+  "sub_city_services_desc": "በክፍለ ከተማ ደረጃ የሚሰጡ አገልግሎቶች",
+
+  "woreda_services": "የወረዳ አገልግሎቶች",
+  "woreda_services_desc": "በወረዳ ደረጃ የሚሰጡ አገልግሎቶች",
+
+  "contact_us": "ያግኙን",
+  "name": "ስም",
+  "email": "ኢሜይል",
+  "message": "መልዕክት",
+  "send_message": "መልዕክት ላክ",
+  "sending": "በመላክ ላይ..."
+}

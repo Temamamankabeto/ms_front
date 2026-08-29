@@ -1,0 +1,92 @@
+name: Deploy Laravel to cPanel
+
+on:
+  push:
+    branches: [ main ] # Change to your default branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Debug Environment
+        run: |
+          echo "SSH_HOST: ${{ secrets.SSH_HOST }}"
+          echo "SSH_USER: ${{ secrets.SSH_USER }}"
+          echo "SSH_PORT: ${{ secrets.SSH_PORT }}"
+          echo "REMOTE_PATH: ${{ secrets.REMOTE_PATH }}"
+          
+          # Test DNS resolution
+          if [ -n "${{ secrets.SSH_HOST }}" ]; then
+            nslookup ${{ secrets.SSH_HOST }} || echo "DNS resolution failed"
+            dig ${{ secrets.SSH_HOST }} || echo "DIG failed"
+            host ${{ secrets.SSH_HOST }} || echo "HOST command failed"
+          else
+            echo "SSH_HOST secret is not set"
+          fi 
+
+      - name: Setup SSH Key 
+        run: | 
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
+          # Add host to known hosts if host is provided
+          if [ -n "${{ secrets.SSH_HOST }}" ]; then
+            ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || echo "ssh-keyscan failed"
+          fi
+
+      - name: Test SSH Connection
+        run: |
+          if [ -n "${{ secrets.SSH_HOST }}" ] && [ -n "${{ secrets.SSH_USER }}" ]; then
+            echo "Testing SSH connection..."
+            ssh -i ~/.ssh/deploy_key -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo 'SSH connection successful'" || echo "SSH connection failed"
+          else
+            echo "Missing SSH_HOST or SSH_USER secrets"
+          fi
+
+      - name: Execute Remote SSH Commands
+        if: success()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          timeout: 300s
+          command_timeout: 60s
+          script: |
+            cd ${{ secrets.REMOTE_PATH }}
+            
+            # Backup current version
+            if [ -d "storage/app/backups" ]; then
+              tar -czf storage/app/backups/backup-$(date +%Y%m%d-%H%M%S).tar.gz --exclude=storage/app/backups .
+            fi
+            
+            # Pull latest changes
+            git pull origin main
+            
+            # Install dependencies
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+            
+            # Run migrations (only if needed)
+            php artisan migrate --force
+            
+            # Clear and cache configurations
+            php artisan config:clear
+            php artisan config:cache
+            php artisan route:clear
+            php artisan route:cache
+            php artisan view:clear
+            php artisan view:cache
+            
+            # Set proper permissions
+            chmod -R 755 storage
+            chmod -R 755 bootstrap/cache
+            
+            # Optimize for production
+            php artisan optimize
+            
+            echo "Deployment completed successfully!"

@@ -1,0 +1,35 @@
+{
+  "home": "Fuula Jalqabaa",
+  "about_us": "Waa'ee Keenya",
+  "service_provider": "Kennaa Tajaajilaa",
+  "services": "Tajaajiloota",
+  "resources": "Qabeenya",
+  "news": "Oduu",
+  "contacts": "Nu Qunnamaa",
+
+  "sign_in": "Seeni",
+  "create_account": "Herrega Uumi",
+
+  "hero_title": "Bulchiinsa gaarii mirkaneessuuf tajaajila elektiroonikaa",
+
+  "search": "Barbaadi",
+
+  "our_services": "Tajaajiloota Keenya",
+  "view_all": "Hundaa Ilaali",
+
+  "city_services": "Tajaajila Magaalaa",
+  "city_services_desc": "Tajaajiloota mootummaa magaalaan kennaman",
+
+  "sub_city_services": "Tajaajila Kutaa Magaalaa",
+  "sub_city_services_desc": "Tajaajiloota sadarkaa kutaa magaalaatti kennaman",
+
+  "woreda_services": "Tajaajila Aanaa",
+  "woreda_services_desc": "Tajaajiloota sadarkaa aanaatti kennaman",
+
+  "contact_us": "Nu Qunnamaa",
+  "name": "Maqaa",
+  "email": "Imeelii",
+  "message": "Ergaa",
+  "send_message": "Ergaa Ergi",
+  "sending": "Ergamaa jira..."
+}

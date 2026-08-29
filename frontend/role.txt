@@ -1,0 +1,9 @@
+
+
+role
+    1. super admin
+    2. Manager(city/subcity/woreda)
+    3.admin(city/subcity/woreda)
+    4. back officer(city/subcity/woreda)
+    5. front officer(city/subcity/woreda)
+    6. cusotmer

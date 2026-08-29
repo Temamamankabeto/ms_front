@@ -11,6 +11,7 @@ use App\Models\ServiceApplicationHistory;
 use App\Services\Concerns\ChecksServiceAvailability;
 use App\Support\AppRoles;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use App\Models\ApplicationQueue;
 class PublicApplicationService
@@ -81,6 +82,20 @@ class PublicApplicationService
             'priority'             => 'normal',
             'submitted_at'         => now(),
         ]);
+
+        $legacyOwnershipColumns = [];
+
+        if (Schema::hasColumn('service_applications', 'created_by')) {
+            $legacyOwnershipColumns['created_by'] = $user->id;
+        }
+
+        if (Schema::hasColumn('service_applications', 'user_id')) {
+            $legacyOwnershipColumns['user_id'] = $user->id;
+        }
+
+        if (!empty($legacyOwnershipColumns)) {
+            $application->forceFill($legacyOwnershipColumns)->save();
+        }
 
         /*
         |--------------------------------------------------------------------------

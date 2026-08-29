@@ -3,11 +3,17 @@
 namespace App\Http\Controllers\Api\Customer;
 
 use App\Http\Controllers\Controller;
-use App\Models\ServiceApplication;
 use App\Models\ApplicationQueue;
+use App\Models\ServiceApplication;
+use App\Models\ServiceApplicationData;
+use App\Models\ServiceApplicationHistory;
+use App\Services\ApplicationFileService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 class CustomerServiceApplicationController extends Controller
 {
@@ -35,7 +41,6 @@ class CustomerServiceApplicationController extends Controller
             'returned_to_front_officer',
             'returned_to_back_officer',
         ],
-
         'rejected' => [
             'rejected',
             'returned',
@@ -43,226 +48,374 @@ class CustomerServiceApplicationController extends Controller
             'back_officer_rejected',
             'cancelled',
         ],
-
         'approved' => [
             'approved',
             'back_officer_approved',
             'manager_resolved',
         ],
-
         'appointed' => [
             'appointment_scheduled',
         ],
-
         'completed' => [
             'completed',
             'closed',
+            'sent_to_customer',
         ],
     ];
 
-  public function index(Request $request): JsonResponse
-{
-    $baseQuery = ServiceApplication::query()
-        ->where('customer_id', $request->user()->id);
+    public function __construct(protected ApplicationFileService $fileService) {}
 
-    // Search filter
-    $this->applySearch($baseQuery, $request);
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
 
-    // Status counts (before filtering)
-    $statusCounts = $this->statusCounts(clone $baseQuery);
+        $baseQuery = ServiceApplication::query();
 
-    // Main query with relations INCLUDING QUEUE
-    $applicationsQuery = (clone $baseQuery)
-        ->with([
+        $this->applyCustomerOwnership($baseQuery, $user);
+        $this->applySearch($baseQuery, $request);
+
+        $statusCounts = $this->statusCounts(clone $baseQuery);
+
+        $applicationsQuery = (clone $baseQuery)->with([
             'service',
+            'customer',
             'city',
             'subcity',
             'woreda',
             'appointments',
             'queue',
+            'histories',
+            'feedback',
         ]);
 
-    // Apply status filter
-    $this->applyStatusFilter($applicationsQuery, $request->input('status'));
+        $this->applyStatusFilter($applicationsQuery, $request->input('status'));
 
-    // Pagination
-    $applications = $applicationsQuery
-        ->latest('submitted_at')
-        ->paginate(
-            min((int) $request->input('per_page', 10), 100)
-        );
+        $applications = $applicationsQuery
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('id')
+            ->paginate(min((int) $request->input('per_page', 10), 100));
 
-    // =========================================================
-    // ✅ FIXED QUEUE LOGIC (REAL-TIME ACCURATE)
-    // =========================================================
-    $data = collect($applications->items())->map(function ($app) {
+        $data = collect($applications->items())->map(function (ServiceApplication $app) {
+            $queue = $app->queue;
 
-        $queue = $app->queue;
+            $applicationsAhead = null;
+            $isNext = false;
 
-        $applicationsAhead = null;
-        $isNext = false;
+            if ($queue) {
+                $applicationsAhead = ApplicationQueue::query()
+                    ->where('status', 'waiting')
+                    ->whereHas('application', function ($query) use ($app) {
+                        $query->where('service_id', $app->service_id);
+                    })
+                    ->where('created_at', '<', $queue->created_at)
+                    ->count();
 
-        if ($queue) {
+                $isNext = $applicationsAhead === 0 && $queue->status === 'waiting';
+            }
 
-            // ✅ CORRECT LOGIC:
-            // count ONLY waiting applications in SAME service
-            // ordered by created_at (NOT id, NOT service_id in queue table)
+            return [
+                ...$app->toArray(),
+                'queue_info' => $queue ? [
+                    'queue_number' => $queue->queue_number,
+                    'status' => $queue->status,
+                    'position' => $queue->position,
+                    'applications_ahead' => $applicationsAhead,
+                    'is_next' => $isNext,
+                ] : null,
+            ];
+        })->values();
 
-            $applicationsAhead = ApplicationQueue::query()
-                ->where('status', 'waiting')
-                ->whereHas('application', function ($q) use ($app) {
-                    $q->where('service_id', $app->service_id);
-                })
-                ->where('created_at', '<', $queue->created_at)
-                ->count();
+        return response()->json([
+            'success' => true,
+            'message' => 'Customer applications retrieved successfully',
+            'data' => $data,
+            'meta' => [
+                'current_page' => $applications->currentPage(),
+                'per_page' => $applications->perPage(),
+                'total' => $applications->total(),
+                'last_page' => $applications->lastPage(),
+                'status_counts' => $statusCounts,
+            ],
+        ]);
+    }
 
-            $isNext = $applicationsAhead === 0 && $queue->status === 'waiting';
+    public function show(Request $request, ServiceApplication $application): JsonResponse
+    {
+        abort_if(!$this->customerOwnsApplication($application, $request->user()), 403);
+
+        $application->load([
+            'service',
+            'customer',
+            'city',
+            'subcity',
+            'woreda',
+            'currentWindow',
+            'currentOfficer',
+            'assignee',
+            'data',
+            'files.uploader',
+            'appointments.scheduler',
+            'workflows.window',
+            'workflows.officer',
+            'histories.actor',
+            'histories.sender',
+            'histories.receiver',
+            'histories.fromWindow',
+            'histories.toWindow',
+            'shares.fromOfficer',
+            'shares.toOfficer',
+            'queue',
+            'feedback',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customer application retrieved successfully',
+            'data' => $application,
+        ]);
+    }
+
+    public function resubmit(Request $request, ServiceApplication $application): JsonResponse
+    {
+        abort_if(!$this->customerOwnsApplication($application, $request->user()), 403);
+
+        $status = strtolower((string) $application->status);
+
+        if (!in_array($status, ['rejected', 'returned', 'returned_to_customer', 'back_officer_rejected', 'cancelled'], true)) {
+            throw ValidationException::withMessages([
+                'status' => ['Only rejected or returned applications can be resubmitted.'],
+            ]);
         }
 
-        return [
-            ...$app->toArray(),
+        $validated = $request->validate([
+            'data' => ['nullable', 'array'],
+            'files' => ['nullable', 'array'],
+            'files.*' => ['file', 'max:10240'],
+            'remark' => ['nullable', 'string', 'max:2000'],
+            'message' => ['nullable', 'string', 'max:2000'],
+        ]);
 
-            'queue_info' => $queue ? [
-                'queue_number' => $queue->queue_number,
-                'status' => $queue->status,
-                'position' => $queue->position,
+        $application = DB::transaction(function () use ($application, $request, $validated) {
+            foreach (($validated['data'] ?? []) as $field => $value) {
+                ServiceApplicationData::updateOrCreate(
+                    [
+                        'application_id' => $application->id,
+                        'field_name' => (string) $field,
+                    ],
+                    [
+                        'field_value' => is_array($value) ? json_encode($value) : $value,
+                    ]
+                );
+            }
 
-                // ✅ REAL DYNAMIC VALUE (always correct)
-                'applications_ahead' => $applicationsAhead,
+            $uploadedFiles = $request->file('files', []);
 
-                // 🔥 next in line flag
-                'is_next' => $isNext,
-            ] : null,
-        ];
-    });
+            if (!empty($uploadedFiles)) {
+                $this->fileService->storeFiles($application, $uploadedFiles, $request->user());
+            }
 
-    return response()->json([
-        'success' => true,
-        'message' => 'Customer applications retrieved successfully',
+            $oldStatus = $application->status;
 
-        'data' => $data,
+            $application->forceFill([
+                'status' => 'resubmitted',
+                'current_stage' => 'resubmitted',
+                'submitted_at' => now(),
+                'rejection_reason' => null,
+                'returned_count' => (int) $application->returned_count + 1,
+            ])->save();
 
-        'meta' => [
-            'current_page' => $applications->currentPage(),
-            'per_page' => $applications->perPage(),
-            'total' => $applications->total(),
-            'last_page' => $applications->lastPage(),
+            ServiceApplicationHistory::create([
+                'application_id' => $application->id,
+                'from_status' => $oldStatus,
+                'to_status' => 'resubmitted',
+                'action' => 'resubmitted',
+                'action_type' => 'customer_action',
+                'remark' => $validated['remark'] ?? $validated['message'] ?? 'Application resubmitted by customer.',
+                'comment' => $validated['remark'] ?? $validated['message'] ?? null,
+                'actor_id' => $request->user()->id,
+                'sender_id' => $request->user()->id,
+                'receiver_id' => $application->current_officer_id,
+                'from_window_id' => $application->current_window_id,
+                'to_window_id' => $application->current_window_id,
+                'administrative_level' => $application->administrative_level,
+                'status' => 'resubmitted',
+            ]);
 
-            'status_counts' => $statusCounts,
-        ],
-    ]);
-}
- public function show(Request $request, ServiceApplication $application): JsonResponse
-{
-    abort_if(
-        (int) $application->customer_id !== (int) $request->user()->id,
-        403
-    );
+            return $application->fresh([
+                'service',
+                'customer',
+                'city',
+                'subcity',
+                'woreda',
+                'data',
+                'files',
+                'histories.actor',
+                'queue',
+            ]);
+        });
 
-    $application->load([
-        'service',
-        'customer',
-        'city',
-        'subcity',
-        'woreda',
-        'currentWindow',
-        'currentOfficer',
-        'assignee',
-        'data',
-        'files.uploader',
-        'appointments.scheduler',
-        'workflows.window',
-        'workflows.officer',
-        'histories.actor',
-        'histories.sender',
-        'histories.receiver',
-        'histories.fromWindow',
-        'histories.toWindow',
-        'shares.sharedFromOfficer',
-        'shares.sharedToOfficer',
-        'shares.fromWindow',
-        'shares.toWindow',
-        'queue',
-    ]);
-
-    $queue = $application->queue;
-
-    $queueInfo = null;
-
-    if ($queue) {
-
-        $applicationsAhead = \App\Models\ApplicationQueue::query()
-            ->where('status', 'waiting')
-            ->where('position', '<', $queue->position)
-            ->whereHas('application', function ($query) use ($application) {
-                $query->where('service_id', $application->service_id);
-            })
-            ->count();
-
-        $totalWaiting = \App\Models\ApplicationQueue::query()
-            ->where('status', 'waiting')
-            ->whereHas('application', function ($query) use ($application) {
-                $query->where('service_id', $application->service_id);
-            })
-            ->count();
-
-        $queueInfo = [
-            'queue_number' => $queue->queue_number,
-            'status' => $queue->status,
-            'position' => $queue->position,
-            'applications_ahead' => $applicationsAhead,
-            'total_waiting' => $totalWaiting,
-            'message' => $applicationsAhead > 0
-                ? "{$applicationsAhead} applications are ahead of you."
-                : "Your application is next in queue.",
-        ];
+        return response()->json([
+            'success' => true,
+            'message' => 'Application resubmitted successfully',
+            'data' => $application,
+        ]);
     }
 
-    return response()->json([
-        'success' => true,
-        'message' => 'Customer application retrieved successfully',
-        'data' => $application,
-        'queue_info' => $queueInfo,
-    ]);
-}
-
-
-    private function customerStatusGroup(string $status): array
+    protected function applyCustomerOwnership(Builder $query, $user): void
     {
-        return self::STATUS_GROUPS[$status] ?? [$status];
-    }
+        $customerId = (int) $user->id;
+        $email = strtolower(trim((string) $user->email));
+        $phone = $this->normalizePhone($user->phone ?? null);
 
-    private function applySearch(Builder $query, Request $request): void
-    {
-        $query->when($request->filled('search'), function (Builder $query) use ($request) {
-            $search = $request->input('search');
+        $query->where(function (Builder $ownerQuery) use ($customerId, $email, $phone) {
+            $ownerQuery->where('customer_id', $customerId);
 
-            $query->where(function (Builder $query) use ($search) {
-                $query->where('tracking_number', 'like', "%{$search}%")
-                    ->orWhereHas('service', function (Builder $serviceQuery) use ($search) {
-                        $serviceQuery->where('name', 'like', "%{$search}%");
-                    });
+            if (Schema::hasColumn('service_applications', 'created_by')) {
+                $ownerQuery->orWhere('created_by', $customerId);
+            }
+
+            if (Schema::hasColumn('service_applications', 'user_id')) {
+                $ownerQuery->orWhere('user_id', $customerId);
+            }
+
+            /*
+             * Important fallback:
+             * Some records can be created under an earlier duplicate customer row,
+             * but with the same email/phone. Tracking works because it is public,
+             * but the logged-in customer list becomes 0 if we only compare IDs.
+             * Match the related customer email/phone too, while still staying
+             * scoped to the logged-in user's own identity.
+             */
+            $ownerQuery->orWhereHas('customer', function (Builder $customerQuery) use ($email, $phone) {
+                $customerQuery->where(function (Builder $identityQuery) use ($email, $phone) {
+                    if ($email !== '') {
+                        $identityQuery->whereRaw('LOWER(email) = ?', [$email]);
+                    }
+
+                    if ($phone !== '') {
+                        $identityQuery->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), '+', ''), ' ', ''), '-', '') = ?",
+                            [$phone]
+                        );
+                    }
+                });
+            });
+
+            $ownerQuery->orWhereHas('histories', function (Builder $historyQuery) use ($customerId) {
+                $historyQuery->where('actor_id', $customerId)
+                    ->whereIn('action', ['submitted', 'resubmitted']);
             });
         });
     }
 
-    private function applyStatusFilter(Builder $query, ?string $status): void
+    protected function customerOwnsApplication(ServiceApplication $application, $user): bool
     {
-        if (!$status || $status === 'all') {
+        $customerId = (int) $user->id;
+        $email = strtolower(trim((string) $user->email));
+        $phone = $this->normalizePhone($user->phone ?? null);
+
+        if ((int) $application->customer_id === $customerId) {
+            return true;
+        }
+
+        if (
+            Schema::hasColumn('service_applications', 'created_by') &&
+            (int) ($application->created_by ?? 0) === $customerId
+        ) {
+            return true;
+        }
+
+        if (
+            Schema::hasColumn('service_applications', 'user_id') &&
+            (int) ($application->user_id ?? 0) === $customerId
+        ) {
+            return true;
+        }
+
+        $application->loadMissing('customer');
+
+        if ($application->customer) {
+            $customerEmail = strtolower(trim((string) $application->customer->email));
+            $customerPhone = $this->normalizePhone($application->customer->phone ?? null);
+
+            if ($email !== '' && $customerEmail === $email) {
+                return true;
+            }
+
+            if ($phone !== '' && $customerPhone === $phone) {
+                return true;
+            }
+        }
+
+        return $application->histories()
+            ->where('actor_id', $customerId)
+            ->whereIn('action', ['submitted', 'resubmitted'])
+            ->exists();
+    }
+
+    protected function normalizePhone(?string $phone): string
+    {
+        return preg_replace('/\D+/', '', (string) $phone) ?: '';
+    }
+
+    protected function applySearch(Builder $query, Request $request): void
+    {
+        $search = trim((string) $request->input('search', ''));
+
+        if ($search === '') {
             return;
         }
 
-        $query->whereIn('status', self::STATUS_GROUPS[$status] ?? [$status]);
+        $query->where(function (Builder $searchQuery) use ($search) {
+            $searchQuery
+                ->where('tracking_number', 'like', "%{$search}%")
+                ->orWhere('status', 'like', "%{$search}%")
+                ->orWhereHas('service', function (Builder $serviceQuery) use ($search) {
+                    $serviceQuery->where('name', 'like', "%{$search}%");
+                })
+                ->orWhereHas('queue', function (Builder $queueQuery) use ($search) {
+                    $queueQuery->where('queue_number', 'like', "%{$search}%");
+                });
+        });
     }
 
-    private function statusCounts(Builder $query): array
+    protected function applyStatusFilter(Builder $query, ?string $status): void
     {
+        $status = trim((string) $status);
+
+        if ($status === '') {
+            return;
+        }
+
+        $statuses = self::STATUS_GROUPS[$status] ?? [$status];
+
+        $query->whereIn('status', $statuses);
+    }
+
+    protected function statusCounts(Builder $query): array
+    {
+        $statusValues = (clone $query)
+            ->select('status')
+            ->pluck('status')
+            ->map(fn ($status) => (string) $status)
+            ->values();
+
         $counts = [
-            'total' => (clone $query)->count(),
+            'total' => $statusValues->count(),
+            'pending' => 0,
+            'rejected' => 0,
+            'approved' => 0,
+            'appointed' => 0,
+            'completed' => 0,
         ];
 
-        foreach (self::STATUS_GROUPS as $key => $statuses) {
-            $counts[$key] = (clone $query)->whereIn('status', $statuses)->count();
+        foreach ($statusValues as $status) {
+            foreach (self::STATUS_GROUPS as $group => $statuses) {
+                if (in_array($status, $statuses, true) && array_key_exists($group, $counts)) {
+                    $counts[$group]++;
+                    break;
+                }
+            }
         }
 
         return $counts;

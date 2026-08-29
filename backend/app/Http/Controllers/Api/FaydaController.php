@@ -75,15 +75,7 @@ class FaydaController extends Controller
                         'expires_in' => 30 * 60,
                     ],
                 ])
-                ->cookie(
-                    'refresh_token',
-                    $refreshToken,
-                    60 * 24 * 7,
-                    '/',
-                    config('session.domain'),
-                    (bool) config('session.secure'),
-                    true
-                )->withSameSite((string) config('session.same_site', 'lax'));
+                ->cookie($this->refreshCookie($refreshToken, $request));
         } catch (\Throwable $exception) {
             report($exception);
 
@@ -92,5 +84,30 @@ class FaydaController extends Controller
                 'message' => 'Fayda callback failed',
             ], 500);
         }
+    }
+
+    protected function refreshCookie(string $refreshToken, Request $request)
+    {
+        return cookie(
+            'refresh_token',
+            $refreshToken,
+            60 * 24 * 7,
+            '/',
+            config('session.domain'),
+            $this->shouldUseSecureCookie($request),
+            true
+        )->withSameSite((string) config('session.same_site', 'lax'));
+    }
+
+    protected function clearRefreshCookie()
+    {
+        return cookie()->forget('refresh_token', '/', config('session.domain'));
+    }
+
+    protected function shouldUseSecureCookie(Request $request): bool
+    {
+        return app()->environment('production')
+            || $request->isSecure()
+            || $request->header('X-Forwarded-Proto') === 'https';
     }
 }

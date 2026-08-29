@@ -8,71 +8,63 @@ use App\Services\SmsService;
 use App\Support\AppRoles;
 use App\Support\StrongPassword;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Validation\Rules\Password;
-use Illuminate\Support\Facades\DB;
 use Log;
 
 class AuthController extends Controller
 {
     public function register(Request $request, SmsService $sms)
-{
-    $validator = Validator::make($request->all(), [
-        'name' => ['required', 'string', 'max:255'],
-        'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-        'phone' => ['required', 'string', 'max:20', 'unique:users,phone'],
-        'password' => array_merge(StrongPassword::required(), ['confirmed']),
-        'address' => ['nullable', 'string', 'max:500'],
-    ]);
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'phone' => ['required', 'string', 'max:20', 'unique:users,phone'],
+            'password' => array_merge(StrongPassword::required(), ['confirmed']),
+            'address' => ['nullable', 'string', 'max:500'],
+        ]);
 
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Validation failed',
-            'errors' => $validator->errors(),
-        ], 422);
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'phone' => $request->phone,
+            'address' => $request->address,
+            'password' => Hash::make($request->password),
+            'is_active' => true,
+        ]);
+
+        $user->syncRoles(['customer']);
+
+        $accessToken = $user->createToken('mesob-api-token', ['*'], now()->addMinutes(30))->plainTextToken;
+        $refreshToken = Str::random(64);
+
+        $user->forceFill([
+            'refresh_token' => hash('sha256', $refreshToken),
+            'refresh_token_expires_at' => now()->addDays(7),
+        ])->save();
+
+        try {
+            $message = "Welcome {$user->name}! Your Adama MESOB account has been created successfully. You can log in using your email or phone number. If you have any questions, please contact 9141 free call.";
+            $sms->sendToPhone($user->phone, $message);
+        } catch (\Throwable $exception) {
+            Log::error('Registration SMS failed: ' . $exception->getMessage());
+        }
+
+        return response()
+            ->json($this->authPayload($user, $accessToken))
+            ->cookie($this->refreshCookie($refreshToken, $request));
     }
-
-    $plainPassword = $request->password;
-
-    // ✅ CREATE USER ONLY ONCE
-    $user = User::create([
-        'name' => $request->name,
-        'email' => $request->email,
-        'phone' => $request->phone,
-        'address' => $request->address,
-        'password' => Hash::make($plainPassword),
-        'is_active' => true,
-    ]);
-
-    // ✅ ROLE
-    $user->syncRoles(['customer']);
-
-    // ✅ TOKENS
-    $accessToken = $user->createToken('api-token')->plainTextToken;
-    $refreshToken = Str::random(64);
-
-    $user->forceFill([
-        'refresh_token' => hash('sha256', $refreshToken),
-        'refresh_token_expires_at' => now()->addDays(30),
-    ])->save();
-
-    // ✅ SMS (no password sending)
-    try {
-        $message = "Welcome {$user->name}! Your Adama MESOB account has been created successfully. You can log in using your email or phone number. If you have any questions, please contact 9141 free call.";
-        $sms->sendToPhone($user->phone, $message);
-    } catch (\Throwable $exception) {
-        Log::error('Registration SMS failed: ' . $exception->getMessage());
-    }
-
-    return response()->json(
-        $this->authPayload($user, $accessToken, $refreshToken),
-        201
-    )->cookie($this->refreshCookie($refreshToken));
-}
 
     public function login(Request $request)
     {
@@ -86,42 +78,60 @@ class AuthController extends Controller
         $user = User::where('email', $loginInput)->orWhere('phone', $loginInput)->first();
 
         if ($user?->locked_until && now()->lessThan($user->locked_until)) {
-            return response()->json(['success'=>false,'message'=>'Account temporarily locked. Try again later.','data'=>null,'meta'=>['locked_until'=>$user->locked_until]], 423);
+            return response()->json([
+                'success' => false,
+                'message' => 'Account temporarily locked. Try again later.',
+                'data' => null,
+                'meta' => ['locked_until' => $user->locked_until],
+            ], 423);
         }
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             if ($user) {
                 DB::transaction(function () use ($user) {
-                    $attempts = $user->failed_login_attempts + 1;
+                    $attempts = ((int) $user->failed_login_attempts) + 1;
+
                     $user->forceFill([
-                        'failed_login_attempts'=>$attempts,
-                        'last_failed_login_at'=>now(),
-                        'locked_until'=>$attempts >= 5 ? now()->addMinutes(30) : null,
+                        'failed_login_attempts' => $attempts,
+                        'last_failed_login_at' => now(),
+                        'locked_until' => $attempts >= 5 ? now()->addMinutes(30) : null,
                     ])->save();
+
                     $user->tokens()->delete();
                 });
             }
-            throw ValidationException::withMessages(['login'=>['Invalid email/phone or password.']]);
+
+            throw ValidationException::withMessages([
+                'login' => ['Invalid email/phone or password.'],
+            ]);
         }
 
         if (!$user->is_active) {
-            return response()->json(['success'=>false,'message'=>'Your account is disabled. Please contact the administrator.','data'=>null,'meta'=>null], 403);
+            return response()->json([
+                'success' => false,
+                'message' => 'Your account is disabled. Please contact the administrator.',
+                'data' => null,
+                'meta' => null,
+            ], 403);
         }
 
         $user->tokens()->delete();
+
         $accessToken = $user->createToken('mesob-api-token', ['*'], now()->addMinutes(30))->plainTextToken;
         $refreshToken = Str::random(64);
+
         $user->forceFill([
-            'refresh_token'=>hash('sha256',$refreshToken),
-            'refresh_token_expires_at'=>now()->addDays(7),
-            'last_login_at'=>now(),
-            'failed_login_attempts'=>0,
-            'locked_until'=>null,
-            'last_failed_login_at'=>null,
+            'refresh_token' => hash('sha256', $refreshToken),
+            'refresh_token_expires_at' => now()->addDays(7),
+            'last_login_at' => now(),
+            'failed_login_attempts' => 0,
+            'locked_until' => null,
+            'last_failed_login_at' => null,
         ])->save();
 
-        return response()->json($this->authPayload($user, $accessToken, null))
-            ->cookie($this->refreshCookie($refreshToken));
+        return response()
+            ->json($this->authPayload($user, $accessToken))
+            ->cookie($this->refreshCookie($refreshToken, $request));
     }
 
     public function me(Request $request)
@@ -147,13 +157,16 @@ class AuthController extends Controller
             'refresh_token_expires_at' => null,
         ])->save();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged out successfully',
-        ])->withoutCookie('refresh_token');
+        return response()
+            ->json([
+                'success' => true,
+                'message' => 'Logged out successfully',
+            ])
+            ->withoutCookie('refresh_token')
+            ->cookie($this->clearRefreshCookie());
     }
 
-    protected function authPayload(User $user, string $accessToken, ?string $refreshToken = null): array
+    protected function authPayload(User $user, string $accessToken): array
     {
         return [
             'success' => true,
@@ -195,7 +208,7 @@ class AuthController extends Controller
         ];
     }
 
-    protected function refreshCookie(string $refreshToken)
+    protected function refreshCookie(string $refreshToken, Request $request)
     {
         return cookie(
             'refresh_token',
@@ -203,8 +216,20 @@ class AuthController extends Controller
             60 * 24 * 7,
             '/',
             config('session.domain'),
-            (bool) config('session.secure'),
+            $this->shouldUseSecureCookie($request),
             true
         )->withSameSite((string) config('session.same_site', 'lax'));
+    }
+
+    protected function clearRefreshCookie()
+    {
+        return cookie()->forget('refresh_token', '/', config('session.domain'));
+    }
+
+    protected function shouldUseSecureCookie(Request $request): bool
+    {
+        return app()->environment('production')
+            || $request->isSecure()
+            || $request->header('X-Forwarded-Proto') === 'https';
     }
 }

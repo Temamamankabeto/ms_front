@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 
 class ServiceApplicationFile extends Model
 {
@@ -38,15 +38,18 @@ class ServiceApplicationFile extends Model
 
     public function getDownloadUrlAttribute(): ?string
     {
-        if (! $this->path) {
+        if (! $this->id) {
             return null;
         }
 
-        if (str_starts_with($this->path, 'http')) {
-            return $this->path;
-        }
-
-        return Storage::disk('public')->url($this->path);
+        /*
+         * Files are private. Do not expose /storage/... public links.
+         * The frontend opens this protected API route, and the backend checks:
+         * - authenticated user
+         * - customer ownership
+         * - officer/admin authorization
+         */
+        return URL::to("/api/service-application-files/{$this->id}/download");
     }
 
     public function getDisplayStatusAttribute(): string

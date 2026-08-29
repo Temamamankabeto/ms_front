@@ -2,8 +2,11 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
+
 use App\Models\ServiceApplication;
 use App\Models\ServiceApplicationHistory;
+use App\Models\ServiceApplicationAppointment;
 use App\Models\ServiceApplicationShare;
 use App\Models\User;
 use App\Models\Window;
@@ -141,15 +144,21 @@ class OfficerApplicationService
     ) {
         return DB::transaction(function () use ($application, $actor, $payload) {
 
-            $appointmentAt = $payload['appointment_at'];
+            $appointmentAt = $this->resolveAppointmentAt($payload);
+            $appointmentLocation = $payload['appointment_location'] ?? $payload['location'] ?? null;
+            $appointmentMessage = $payload['appointment_message']
+                ?? $payload['message']
+                ?? $payload['note']
+                ?? $payload['remark']
+                ?? null;
 
             $application->update([
                 'status' => 'appointment_scheduled',
                 'current_stage' => 'appointment_scheduled',
 
                 'appointment_at' => $appointmentAt,
-                'appointment_location' => $payload['appointment_location'] ?? null,
-                'appointment_message' => $payload['appointment_message'] ?? null,
+                'appointment_location' => $appointmentLocation,
+                'appointment_message' => $appointmentMessage,
                 'appointment_status' => 'scheduled',
 
                 'sla_started_at' => now(),
@@ -159,8 +168,8 @@ class OfficerApplicationService
                 'application_id' => $application->id,
                 'scheduled_by' => $actor->id,
                 'appointment_at' => $appointmentAt,
-                'location' => $payload['appointment_location'] ?? null,
-                'message' => $payload['appointment_message'] ?? null,
+                'location' => $appointmentLocation,
+                'message' => $appointmentMessage,
                 'status' => 'scheduled',
             ]);
 
@@ -170,8 +179,8 @@ class OfficerApplicationService
                 'to_status' => 'appointment_scheduled',
                 'action' => 'appointment_scheduled',
                 'action_type' => 'workflow_action',
-                'remark' => $payload['appointment_message'] ?? null,
-                'comment' => $payload['appointment_message'] ?? null,
+                'remark' => $appointmentMessage,
+                'comment' => $appointmentMessage,
                 'actor_id' => $actor->id,
                 'sender_id' => $actor->id,
                 'receiver_id' => $application->customer_id,
@@ -183,6 +192,36 @@ class OfficerApplicationService
 
             return $this->show($application->fresh());
         });
+    }
+
+    protected function resolveAppointmentAt(array $payload): Carbon
+    {
+        if (!empty($payload['appointment_at'])) {
+            return Carbon::parse($payload['appointment_at']);
+        }
+
+        $date = $payload['appointment_date'] ?? null;
+        $time = $payload['appointment_time'] ?? null;
+
+        if (!$date || !$time) {
+            throw ValidationException::withMessages([
+                'appointment_at' => ['Appointment date and time are required.'],
+            ]);
+        }
+
+        $time = trim((string) $time);
+
+        try {
+            if (preg_match('/\b(AM|PM)\b/i', $time)) {
+                return Carbon::createFromFormat('Y-m-d h:i A', $date . ' ' . strtoupper($time));
+            }
+
+            return Carbon::createFromFormat('Y-m-d H:i', $date . ' ' . $time);
+        } catch (\Throwable) {
+            throw ValidationException::withMessages([
+                'appointment_time' => ['Invalid appointment date or time.'],
+            ]);
+        }
     }
 
     public function notificationSummary(User $actor): array

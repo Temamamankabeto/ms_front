@@ -17,44 +17,66 @@ class EnforceIdleSessionTimeout
             return $next($request);
         }
 
-        if (property_exists($user, 'is_active') || array_key_exists('is_active', $user->getAttributes())) {
-            if (!$user->is_active) {
-                $user->tokens()->delete();
-
-                return response()
-                    ->json([
-                        'success' => false,
-                        'message' => 'Your account is disabled. Please contact the administrator.',
-                        'data' => null,
-                        'meta' => null,
-                    ], 403)
-                    ->withoutCookie('refresh_token');
-            }
-        }
-
-        $token = $user->currentAccessToken();
-
-        if (!$token) {
-            return $next($request);
-        }
-
-        $lastUsedAt = $token->last_used_at;
-        $timeoutMinutes = $this->timeoutMinutes($user);
-
-        if ($lastUsedAt && $lastUsedAt->copy()->addMinutes($timeoutMinutes)->isPast()) {
-            $token->delete();
+        if (array_key_exists('is_active', $user->getAttributes()) && !$user->is_active) {
+            $user->tokens()->delete();
 
             return response()
                 ->json([
                     'success' => false,
-                    'message' => 'Session expired because of inactivity. Please login again.',
+                    'message' => 'Your account is disabled. Please contact the administrator.',
                     'data' => null,
-                    'meta' => ['idle_timeout_minutes' => $timeoutMinutes],
-                ], 401)
+                    'meta' => null,
+                ], 403)
                 ->withoutCookie('refresh_token');
         }
 
-        $token->forceFill(['last_used_at' => now()])->save();
+        $timeoutMinutes = $this->timeoutMinutes($user);
+
+        /*
+         * Sanctum may authenticate requests through:
+         * 1. Bearer personal access token.
+         * 2. SPA/session cookie.
+         *
+         * currentAccessToken() is not always a PersonalAccessToken object.
+         * Some token variants do not have last_used_at, delete(), or forceFill().
+         * This middleware must therefore check capabilities before using them,
+         * otherwise /api/auth/me can fail with HTTP 500 and the dashboard stays blank.
+         */
+        $token = $user->currentAccessToken();
+
+        if ($token && method_exists($token, 'forceFill')) {
+            $lastUsedAt = $token->last_used_at ?? null;
+
+            if ($lastUsedAt && $lastUsedAt->copy()->addMinutes($timeoutMinutes)->isPast()) {
+                if (method_exists($token, 'delete')) {
+                    $token->delete();
+                }
+
+                return $this->expiredResponse($timeoutMinutes);
+            }
+
+            $token->forceFill(['last_used_at' => now()])->save();
+
+            return $next($request);
+        }
+
+        /*
+         * Cookie/session fallback. Only use session APIs when a session really exists.
+         */
+        if ($request->hasSession()) {
+            $session = $request->session();
+            $lastActivity = $session->get('last_activity_at');
+
+            if ($lastActivity && now()->parse($lastActivity)->addMinutes($timeoutMinutes)->isPast()) {
+                $session->invalidate();
+                $session->regenerateToken();
+                $user->tokens()->delete();
+
+                return $this->expiredResponse($timeoutMinutes);
+            }
+
+            $session->put('last_activity_at', now()->toISOString());
+        }
 
         return $next($request);
     }
@@ -68,5 +90,17 @@ class EnforceIdleSessionTimeout
         }
 
         return (int) env('IDLE_TIMEOUT_MINUTES', 30);
+    }
+
+    protected function expiredResponse(int $timeoutMinutes): Response
+    {
+        return response()
+            ->json([
+                'success' => false,
+                'message' => 'Session expired because of inactivity. Please login again.',
+                'data' => null,
+                'meta' => ['idle_timeout_minutes' => $timeoutMinutes],
+            ], 401)
+            ->withoutCookie('refresh_token');
     }
 }

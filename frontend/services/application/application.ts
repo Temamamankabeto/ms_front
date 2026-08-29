@@ -69,6 +69,41 @@ export const applicationService = {
     return unwrap(response);
   },
 
+
+  async details(id: number) {
+    const response = await api.get(`/customer/service-applications/${id}`);
+    return unwrap(response);
+  },
+
+  async resubmit(id: number, input: FormData | { values?: Record<string, unknown>; files?: Record<string, File | null> }) {
+    const payload = input instanceof FormData ? input : new FormData();
+
+    if (!(input instanceof FormData)) {
+      Object.entries(input.values ?? {}).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+
+        if (Array.isArray(value)) {
+          value.forEach((item) => payload.append(`data[${key}][]`, String(item)));
+          return;
+        }
+
+        payload.append(`data[${key}]`, String(value));
+      });
+
+      Object.entries(input.files ?? {}).forEach(([key, file]) => {
+        if (file) payload.append(`files[${key}]`, file);
+      });
+    }
+
+    const response = await api.post(`/customer/service-applications/${id}/resubmit`, payload, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+
+    return unwrap(response);
+  },
+
   async track(payload: string | { tracking_number?: string; application_number?: string; tracking?: string }) {
     const trackingNumber =
       typeof payload === "string"

@@ -1,66 +1,156 @@
 "use client";
 
-import { Download, FileText } from "lucide-react";
+import { useState } from "react";
+import { Download, FileText, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
-import { ServiceApplicationFile } from "@/types/application-workflow";
+import { Button } from "@/components/ui/button";
+import api from "@/lib/api";
 
-// Backend origin (Laravel), derived from the API base URL so file links
-// resolve correctly even when the frontend and backend run on different
-// hosts/ports (e.g. localhost:3000 vs 127.0.0.1:8000).
-const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000/api").replace(
-    /\/api\/?$/,
-    ""
-);
+function backendOrigin() {
+  const raw =
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    "http://127.0.0.1:8000/api";
 
-function fileUrl(file: any) {
-  if (file.download_url) return file.download_url;
-  if (!file.path) return "#";
-  if (String(file.path).startsWith("http")) return file.path;
-
-  const path = String(file.path).replace(/^\/+/, "");
-  return `${API_ORIGIN}/storage/${path}`;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw.replace(/\/api\/?$/, "").replace(/\/$/, "");
+  }
 }
 
-function fileStatus(file: any) {
-  return file.display_status || file.display_category || "Available";
+function protectedFileUrl(file: any) {
+  if (file?.id) {
+    return `${backendOrigin()}/api/service-application-files/${file.id}/download`;
+  }
+
+  const url = file?.download_url || file?.url || file?.path;
+
+  if (!url) return null;
+
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+
+  if (url.startsWith("/api/")) {
+    return `${backendOrigin()}${url}`;
+  }
+
+  if (url.startsWith("/storage/")) {
+    return `${backendOrigin()}${url}`;
+  }
+
+  return `${backendOrigin()}/storage/${String(url).replace(/^\/?storage\//, "")}`;
 }
 
-function fileCategory(file: any) {
-  return file.display_category || file.file_category || file.field_name || "document";
+function filenameFromDisposition(header?: string | null) {
+  if (!header) return null;
+
+  const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8?.[1]) return decodeURIComponent(utf8[1]);
+
+  const normal = header.match(/filename="?([^"]+)"?/i);
+  return normal?.[1] || null;
 }
 
-export default function ApplicationFilesList({ files = [] }: { files?: ServiceApplicationFile[] }) {
-  if (!files.length) {
+export default function ApplicationFilesList({ files = [] }: { files?: any[] }) {
+  const [openingId, setOpeningId] = useState<number | string | null>(null);
+
+  if (!files?.length) {
     return <p className="text-sm text-muted-foreground">No files uploaded.</p>;
   }
 
-  return (
-      <div className="space-y-3">
-        {files.map((file: any) => (
-            <a
-                key={file.id}
-                href={fileUrl(file)}
-                target="_blank"
-                rel="noreferrer"
-                download
-                className="flex items-center justify-between gap-4 rounded-2xl border p-4 transition hover:bg-muted"
-            >
-          <span className="flex min-w-0 items-center gap-3">
-            <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0">
-              <span className="block truncate font-medium">{file.original_name}</span>
-              <span className="text-xs text-muted-foreground">{fileCategory(file)}{file.uploader?.name ? ` · By ${file.uploader.name}` : ""}</span>
-            </span>
-          </span>
+  async function openFile(file: any) {
+    const url = protectedFileUrl(file);
 
-              <span className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
-              {fileStatus(file)}
-            </span>
-            <Download className="h-4 w-4 text-muted-foreground" />
-          </span>
-            </a>
-        ))}
-      </div>
+    if (!url) {
+      toast.error("Document link not found.");
+      return;
+    }
+
+    setOpeningId(file.id || file.path || file.original_name);
+
+    try {
+      const response = await api.get(url, {
+        responseType: "blob",
+      });
+
+      const contentType = response.headers["content-type"] || file.mime_type || "application/octet-stream";
+      const blob = new Blob([response.data], { type: contentType });
+      const objectUrl = URL.createObjectURL(blob);
+
+      const name =
+        filenameFromDisposition(response.headers["content-disposition"]) ||
+        file.original_name ||
+        file.stored_name ||
+        "document";
+
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.download = name;
+
+      // PDF/images open in a new tab. Other file types will download.
+      if (contentType.includes("pdf") || contentType.startsWith("image/")) {
+        window.open(objectUrl, "_blank", "noopener,noreferrer");
+      } else {
+        link.click();
+      }
+
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error: any) {
+      toast.error(error?.message || "Unable to open document.");
+    } finally {
+      setOpeningId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {files.map((file) => {
+        const key = file.id || file.path || file.original_name;
+        const isOpening = openingId === key;
+
+        return (
+          <div
+            key={key}
+            className="flex items-center justify-between gap-3 rounded-2xl border bg-background p-4"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <FileText className="h-5 w-5" />
+              </div>
+
+              <div className="min-w-0">
+                <p className="truncate font-semibold">
+                  {file.original_name || file.stored_name || "Document"}
+                </p>
+
+                <p className="text-xs text-muted-foreground">
+                  {file.display_status || file.file_category || "Submitted Document"}
+                </p>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              disabled={isOpening}
+              onClick={() => openFile(file)}
+            >
+              {isOpening ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        );
+      })}
+    </div>
   );
 }

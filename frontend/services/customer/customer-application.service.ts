@@ -1,49 +1,50 @@
 import api, { unwrap } from "@/lib/api";
-import { ServiceApplication } from "@/types/application-workflow";
 
-export type CustomerApplicationListResponse = {
-  success: boolean;
-  message: string;
-  data: ServiceApplication[];
-  meta: {
-    current_page: number;
-    per_page: number;
-    total: number;
-    last_page: number;
-    status_counts?: {
-      total: number;
-      pending: number;
-      under_review: number;
-      appointed: number;
-      approved: number;
-      completed: number;
-      rejected: number;
-    };
-  };
+export type CustomerApplicationsParams = {
+  page?: number;
+  per_page?: number;
+  status?: string;
+  search?: string;
 };
 
-export const customerApplicationService = {
-  async list(params: {
-    page?: number;
-    search?: string;
-    status?: string;
-  } = {}): Promise<CustomerApplicationListResponse> {
-    const response = await api.get("/customer/service-applications", {
-      params: {
-        page: params.page ?? 1,
-        search: params.search || undefined,
-        status: params.status || undefined,
-        per_page: 10,
-      },
-    });
+function queryString(params: CustomerApplicationsParams = {}) {
+  const query = new URLSearchParams();
 
-    return unwrap<CustomerApplicationListResponse>(response);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    query.set(key, String(value));
+  });
+
+  const text = query.toString();
+
+  return text ? `?${text}` : "";
+}
+
+export const customerApplicationService = {
+  async list(params: CustomerApplicationsParams = {}) {
+    const response = await api.get(
+      `/customer/service-applications${queryString(params)}`
+    );
+
+    return unwrap(response);
   },
 
-  async show(id: number): Promise<ServiceApplication> {
+  async details(id: number | string) {
     const response = await api.get(`/customer/service-applications/${id}`);
-    const body = unwrap<{ data: ServiceApplication }>(response);
+    return unwrap(response);
+  },
 
-    return body.data;
+  async resubmit(id: number | string, payload: FormData) {
+    const response = await api.post(
+      `/customer/service-applications/${id}/resubmit`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+
+    return unwrap(response);
   },
 };

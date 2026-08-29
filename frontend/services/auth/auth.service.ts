@@ -1,4 +1,4 @@
-import api, { clearSession, saveAccessToken, unwrap } from "@/lib/api";
+import api, { clearSession, refreshAccessToken, saveAccessToken, unwrap } from "@/lib/api";
 import type { CustomerRegisterPayload } from "@/lib/auth/auth.schema";
 
 export type AuthUser = {
@@ -12,6 +12,7 @@ export type AuthUser = {
   city_id?: number | string | null;
   subcity_id?: number | string | null;
   woreda_id?: number | string | null;
+  location_level?: string | null;
   city?: { id?: number | string; name?: string | null } | null;
   subcity?: { id?: number | string; name?: string | null } | null;
   woreda?: { id?: number | string; name?: string | null } | null;
@@ -32,18 +33,25 @@ type LoginResponse = {
   data?: LoginResponse;
 };
 
-
 function normalizeUserResponse(response: any): AuthUser {
   const body = response?.data ?? response;
 
-  return (
+  const user =
+    body?.data?.user ??
     body?.data ??
     body?.user ??
-    body?.data?.user ??
-    body
-  ) as AuthUser;
-}
+    body;
 
+  const roles = body?.roles ?? user?.roles ?? (user?.role ? [user.role] : []);
+  const permissions = body?.permissions ?? user?.permissions ?? [];
+
+  return {
+    ...user,
+    role: user?.role ?? roles?.[0] ?? "customer",
+    roles,
+    permissions,
+  } as AuthUser;
+}
 
 function normalizeLoginResponse(response: unknown): LoginResponse {
   const value = response as { data?: LoginResponse } | LoginResponse;
@@ -61,15 +69,20 @@ function rememberUser(user: AuthUser | null) {
   return user;
 }
 
+function tokenFrom(response: LoginResponse): string | undefined {
+  return (
+    response.token ??
+    response.access_token ??
+    response.data?.token ??
+    response.data?.access_token
+  );
+}
+
 export const authService = {
   async login(credentials: { email: string; password: string }) {
     const response = await api.post("/auth/login", credentials);
     const loginResponse = normalizeLoginResponse(unwrap<LoginResponse>(response));
-    const token =
-      loginResponse.token ??
-      loginResponse.access_token ??
-      loginResponse.data?.token ??
-      loginResponse.data?.access_token;
+    const token = tokenFrom(loginResponse);
 
     if (token) {
       saveAccessToken(token);
@@ -88,17 +101,20 @@ export const authService = {
   async registerCustomer(payload: CustomerRegisterPayload) {
     const response = await api.post("/auth/register", payload);
     const registerResponse = normalizeLoginResponse(unwrap<LoginResponse>(response));
-    const token =
-      registerResponse.token ??
-      registerResponse.access_token ??
-      registerResponse.data?.token ??
-      registerResponse.data?.access_token;
+    const token = tokenFrom(registerResponse);
 
     if (token) {
       saveAccessToken(token);
     }
 
-    return registerResponse;
+    const user = await this.me().catch(() => null);
+
+    return {
+      ...registerResponse,
+      user: user ?? registerResponse.user,
+      roles: user?.roles ?? registerResponse.roles ?? [],
+      permissions: user?.permissions ?? registerResponse.permissions ?? [],
+    };
   },
 
   async me() {
@@ -107,22 +123,23 @@ export const authService = {
   },
 
   async profile() {
-    try {
-      const response = await api.get("/profile");
-      return rememberUser(normalizeUserResponse(response));
-    } catch {
-      const response = await api.get("/auth/me");
-      return rememberUser(normalizeUserResponse(response));
+    /*
+     * On browser refresh, the in-memory access token is lost.
+     * The refresh token is intentionally HttpOnly, so JavaScript cannot read it.
+     * Therefore, first rotate/restore a short-lived access token from /auth/refresh,
+     * then call /auth/me.
+     */
+    if (!currentUser) {
+      await refreshAccessToken();
     }
+
+    return await this.me();
   },
+
   async faydaLogin(code: string) {
     const response = await api.post("/auth/fayda/callback", { code });
     const faydaResponse = normalizeLoginResponse(unwrap<LoginResponse>(response));
-    const token =
-      faydaResponse.token ??
-      faydaResponse.access_token ??
-      faydaResponse.data?.token ??
-      faydaResponse.data?.access_token;
+    const token = tokenFrom(faydaResponse);
 
     if (token) {
       saveAccessToken(token);
@@ -137,6 +154,7 @@ export const authService = {
       permissions: user?.permissions ?? [],
     };
   },
+
   async updateProfile(payload: FormData) {
     const response = await api.post("/profile/update", payload, {
       headers: {
@@ -161,15 +179,19 @@ export const authService = {
       await api.post("/auth/logout");
     } finally {
       clearSession();
+      rememberUser(null);
     }
   },
 
   saveSession(response: LoginResponse) {
-    const token = response.token ?? response.access_token ?? response.data?.token ?? response.data?.access_token;
-    const user = response.user ?? response.data?.user ?? null;
+    const token = tokenFrom(response);
+
     if (token) {
       saveAccessToken(token);
     }
+
+    const user = response.user ?? response.data?.user ?? null;
+
     if (user) {
       currentUser = user;
       currentRoles = response.roles ?? response.data?.roles ?? user?.roles ?? (user?.role ? [user.role] : []);
@@ -178,7 +200,15 @@ export const authService = {
     }
   },
 
-  getStoredUser(): AuthUser | null { return currentUser; },
-  getStoredRoles(): string[] { return currentRoles; },
-  getStoredPermissions(): string[] { return currentPermissions; },
+  getStoredUser(): AuthUser | null {
+    return currentUser;
+  },
+
+  getStoredRoles(): string[] {
+    return currentRoles;
+  },
+
+  getStoredPermissions(): string[] {
+    return currentPermissions;
+  },
 };

@@ -9,5 +9,6 @@ export function useDashboardOverview(options: { enabled?: boolean } = {}) {
     queryKey: ["dashboard-overview"],
     queryFn: dashboardService.getOverview,
     enabled: options.enabled ?? true,
+    retry: 1,
   });
 }

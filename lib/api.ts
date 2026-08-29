@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosHeaders, InternalAxiosRequestConfig } from "axios";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000/api";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "https://mesobbackend.adamacity.gov.et/api";
 
 let accessToken: string | null = null;
 

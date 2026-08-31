@@ -81,7 +81,7 @@ const refreshClient = axios.create({
   },
 });
 
-async function refreshAccessToken() {
+export async function refreshAccessToken() {
   if (!isBrowser()) return null;
 
   if (!refreshPromise) {

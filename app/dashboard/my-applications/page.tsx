@@ -84,15 +84,14 @@ export default function DashboardMyApplicationsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusKey>("all");
 
-  const { data: applicationsResponse, isLoading } = useCustomerApplications({
+  const { data, isLoading } = useCustomerApplications({
     page,
     search,
     status: status === "all" ? undefined : status,
   });
 
-  const data = ((applicationsResponse as any)?.data ?? applicationsResponse) as any;
   const applications = data?.data || [];
-  const meta = data?.meta;
+  const meta = data?.meta || {};
   const statusCounts = meta?.status_counts;
 
   const activeLabel = useMemo(

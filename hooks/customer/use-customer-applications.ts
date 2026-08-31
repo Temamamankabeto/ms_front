@@ -5,10 +5,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   customerApplicationService,
   type CustomerApplicationsParams,
+  type CustomerApplicationsResponse,
 } from "@/services/customer/customer-application.service";
 
 export function useCustomerApplications(params: CustomerApplicationsParams = {}) {
-  return useQuery({
+  return useQuery<CustomerApplicationsResponse>({
     queryKey: ["customer-service-applications", params],
     queryFn: () => customerApplicationService.list(params),
     retry: 1,
@@ -16,7 +17,7 @@ export function useCustomerApplications(params: CustomerApplicationsParams = {})
 }
 
 export function useCustomerApplication(id: number | string) {
-  return useQuery({
+  return useQuery<any>({
     queryKey: ["customer-service-application", id],
     queryFn: () => customerApplicationService.details(id),
     enabled: Boolean(id),

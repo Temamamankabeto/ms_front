@@ -1,156 +1,104 @@
 "use client";
 
-import { useState } from "react";
 import { Download, FileText, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { ServiceApplicationFile } from "@/types/application-workflow";
 
-function backendOrigin() {
-  const raw =
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    "http://127.0.0.1:8000/api";
-
-  try {
-    return new URL(raw).origin;
-  } catch {
-    return raw.replace(/\/api\/?$/, "").replace(/\/$/, "");
-  }
+function fileStatus(file: any) {
+  return file.display_status || file.display_category || "Available";
 }
 
-function protectedFileUrl(file: any) {
-  if (file?.id) {
-    return `${backendOrigin()}/api/service-application-files/${file.id}/download`;
-  }
-
-  const url = file?.download_url || file?.url || file?.path;
-
-  if (!url) return null;
-
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return url;
-  }
-
-  if (url.startsWith("/api/")) {
-    return `${backendOrigin()}${url}`;
-  }
-
-  if (url.startsWith("/storage/")) {
-    return `${backendOrigin()}${url}`;
-  }
-
-  return `${backendOrigin()}/storage/${String(url).replace(/^\/?storage\//, "")}`;
+function fileCategory(file: any) {
+  return file.display_category || file.file_category || file.field_name || "document";
 }
 
-function filenameFromDisposition(header?: string | null) {
-  if (!header) return null;
-
-  const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i);
-  if (utf8?.[1]) return decodeURIComponent(utf8[1]);
-
-  const normal = header.match(/filename="?([^"]+)"?/i);
-  return normal?.[1] || null;
+function fileName(file: any) {
+  return file.original_name || file.stored_name || "document";
 }
 
-export default function ApplicationFilesList({ files = [] }: { files?: any[] }) {
-  const [openingId, setOpeningId] = useState<number | string | null>(null);
+export default function ApplicationFilesList({
+  files = [],
+}: {
+  files?: ServiceApplicationFile[];
+}) {
+  const [downloadingId, setDownloadingId] = useState<number | string | null>(null);
 
-  if (!files?.length) {
+  if (!files.length) {
     return <p className="text-sm text-muted-foreground">No files uploaded.</p>;
   }
 
-  async function openFile(file: any) {
-    const url = protectedFileUrl(file);
+  async function downloadFile(file: any) {
+    if (!file?.id) return;
 
-    if (!url) {
-      toast.error("Document link not found.");
-      return;
-    }
-
-    setOpeningId(file.id || file.path || file.original_name);
+    setDownloadingId(file.id);
 
     try {
-      const response = await api.get(url, {
-        responseType: "blob",
+      const response = await api.get(
+        `/service-application-files/${file.id}/download`,
+        {
+          responseType: "blob",
+        }
+      );
+
+      const blob = new Blob([response.data], {
+        type: response.headers["content-type"] || file.mime_type || "application/octet-stream",
       });
 
-      const contentType = response.headers["content-type"] || file.mime_type || "application/octet-stream";
-      const blob = new Blob([response.data], { type: contentType });
-      const objectUrl = URL.createObjectURL(blob);
-
-      const name =
-        filenameFromDisposition(response.headers["content-disposition"]) ||
-        file.original_name ||
-        file.stored_name ||
-        "document";
-
+      const objectUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
+
       link.href = objectUrl;
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      link.download = name;
+      link.download = fileName(file);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
 
-      // PDF/images open in a new tab. Other file types will download.
-      if (contentType.includes("pdf") || contentType.startsWith("image/")) {
-        window.open(objectUrl, "_blank", "noopener,noreferrer");
-      } else {
-        link.click();
-      }
-
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    } catch (error: any) {
-      toast.error(error?.message || "Unable to open document.");
+      window.URL.revokeObjectURL(objectUrl);
     } finally {
-      setOpeningId(null);
+      setDownloadingId(null);
     }
   }
 
   return (
     <div className="space-y-3">
-      {files.map((file) => {
-        const key = file.id || file.path || file.original_name;
-        const isOpening = openingId === key;
+      {files.map((file: any) => (
+        <button
+          key={file.id}
+          type="button"
+          onClick={() => downloadFile(file)}
+          disabled={downloadingId === file.id}
+          className="flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <span className="flex min-w-0 items-center gap-3">
+            <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
 
-        return (
-          <div
-            key={key}
-            className="flex items-center justify-between gap-3 rounded-2xl border bg-background p-4"
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <FileText className="h-5 w-5" />
-              </div>
+            <span className="min-w-0">
+              <span className="block truncate font-medium">
+                {fileName(file)}
+              </span>
 
-              <div className="min-w-0">
-                <p className="truncate font-semibold">
-                  {file.original_name || file.stored_name || "Document"}
-                </p>
+              <span className="text-xs text-muted-foreground">
+                {fileCategory(file)}
+                {file.uploader?.name ? ` · By ${file.uploader.name}` : ""}
+              </span>
+            </span>
+          </span>
 
-                <p className="text-xs text-muted-foreground">
-                  {file.display_status || file.file_category || "Submitted Document"}
-                </p>
-              </div>
-            </div>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
+              {fileStatus(file)}
+            </span>
 
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
-              disabled={isOpening}
-              onClick={() => openFile(file)}
-            >
-              {isOpening ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        );
-      })}
+            {downloadingId === file.id ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              <Download className="h-4 w-4 text-muted-foreground" />
+            )}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }

@@ -1,374 +1,358 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { FileText, Plus, Search } from "lucide-react";
-
-import ApplicationStatusBadge from "@/components/application/ApplicationStatusBadge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CustomerFeedbackService } from "@/services/customer-feedback.service";
-import { Input } from "@/components/ui/input";
+import { useParams } from "next/navigation";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { useCustomerApplications } from "@/hooks/customer/use-customer-applications";
+  ArrowLeft,
+  CalendarClock,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  MapPin,
+} from "lucide-react";
 
-const STATUS_FILTERS = [
-  { key: "all", label: "Total Application" },
-  { key: "pending", label: "Pending" },
-  { key: "rejected", label: "Rejected" },
-  { key: "approved", label: "Approved" },
-  { key: "appointed", label: "Appointed" },
-  { key: "completed", label: "Completed" },
-] as const;
+import ApplicationFilesList from "@/components/application/ApplicationFilesList";
+import ApplicationStatusBadge from "@/components/application/ApplicationStatusBadge";
+import ApplicationWorkflowTimeline from "@/components/application/ApplicationWorkflowTimeline";
 
-type StatusKey = (typeof STATUS_FILTERS)[number]["key"];
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-function applicationActions(application: any) {
-  const status = String(application.status || "").toLowerCase();
+import { useCustomerApplication } from "@/hooks/customer/use-customer-applications";
 
-  const items = [
-    {
-      label: "View",
-      href: `/dashboard/my-applications/${application.id}`,
-    },
-    {
-      label: "Track",
-      href: `/dashboard/track-application?tracking=${application.tracking_number}`,
-    },
-  ];
+type NamedRelation = {
+  id?: number | string;
+  name?: string | null;
+  display_name?: string | null;
+};
 
-  // Customer Satisfaction Survey
-  if (
-    status === "completed" &&
-    application.feedback?.token
-  ) {
-    items.push({
-      label: "Customer Satisfaction",
-      href: `/customer-feedback/${application.feedback.token}`,
-    });
-  }
+function formatDateTime(value?: string | null) {
+  if (!value) return "-";
 
-  if (status.includes("approved")) {
-    items.push({
-      label: "Download",
-      href: `/dashboard/my-applications/${application.id}`,
-    });
-  }
-
-  if (status.includes("payment")) {
-    items.push({
-      label: "Pay",
-      href: `/dashboard/payments?application_id=${application.id}`,
-    });
-  }
-
-  if (status.includes("returned") || status.includes("rejected")) {
-    items.push({
-      label: "Resubmit",
-      href: `/dashboard/my-applications/${application.id}/edit`,
-    });
-  }
-
-  return items;
-}
-export default function DashboardMyApplicationsPage() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusKey>("all");
-
-  const { data: applicationsResponse, isLoading } = useCustomerApplications({
-    page,
-    search,
-    status: status === "all" ? undefined : status,
+  return new Date(value).toLocaleString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
+}
 
-  const data = ((applicationsResponse as any)?.data ?? applicationsResponse) as any;
-  const applications = data?.data || [];
-  const meta = data?.meta;
-  const statusCounts = meta?.status_counts;
+function formatDate(value?: string | null) {
+  if (!value) return "-";
 
-  const activeLabel = useMemo(
-    () =>
-      STATUS_FILTERS.find((item) => item.key === status)?.label || "Total",
-    [status]
+  return new Date(value).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return "-";
+
+  return new Date(value).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function latestAppointment(application: any) {
+  if (
+    Array.isArray(application?.appointments) &&
+    application.appointments.length
+  ) {
+    return application.appointments[0];
+  }
+
+  if (application?.appointment_at) {
+    return {
+      id: "current",
+      appointment_at: application.appointment_at,
+      location: application.appointment_location,
+      message: application.appointment_message,
+      status: application.appointment_status,
+    };
+  }
+
+  return null;
+}
+
+function locationText(data: any) {
+  return (
+    data?.woreda?.name ||
+    data?.subcity?.name ||
+    data?.city?.name ||
+    "-"
   );
+}
 
-  function getCount(key: StatusKey) {
-    if (key === "all") return statusCounts?.total ?? meta?.total ?? 0;
-    return statusCounts?.[key] ?? 0;
+function relationName(relation?: NamedRelation | null) {
+  if (!relation) return "-";
+
+  return relation.display_name || relation.name || "-";
+}
+
+export default function DashboardMyApplicationDetailPage() {
+  const params = useParams();
+
+  const id = Number(params.id);
+
+  const { data, isLoading } = useCustomerApplication(id);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[300px] items-center justify-center">
+        <p className="text-sm text-muted-foreground">
+          Loading application...
+        </p>
+      </div>
+    );
   }
 
-  function changeStatus(nextStatus: StatusKey) {
-    setStatus(nextStatus);
-    setPage(1);
+  if (!data) {
+    return (
+      <div className="flex min-h-[300px] items-center justify-center">
+        <p className="text-sm text-muted-foreground">
+          Application not found.
+        </p>
+      </div>
+    );
   }
 
-  function getQueueBadge(status: string, isNext?: boolean) {
-    const s = (status || "").toLowerCase();
-
-    if (isNext) {
-      return (
-        <Badge className="bg-green-600 text-white hover:bg-green-600">
-          Next in line
-        </Badge>
-      );
-    }
-
-    switch (s) {
-      case "waiting":
-        return <Badge variant="secondary">Waiting</Badge>;
-
-      case "serving":
-        return (
-          <Badge className="bg-blue-600 text-white hover:bg-blue-600">
-            Being Served
-          </Badge>
-        );
-
-      case "completed":
-        return (
-          <Badge className="bg-green-600 text-white hover:bg-green-600">
-            Completed
-          </Badge>
-        );
-
-      case "rejected":
-        return <Badge variant="destructive">Rejected</Badge>;
-
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  }
+  const appointment = latestAppointment(data);
 
   return (
-    <div className="space-y-6">
-      {/* HEADER */}
+    <div className="mx-auto max-w-7xl space-y-6 p-3 sm:p-6">
+      <Button asChild variant="outline">
+        <Link href="/dashboard/my-applications">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Applications
+        </Link>
+      </Button>
+
       <div className="rounded-3xl border bg-card p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">My Applications</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Filter applications and track their progress.
+            <p className="text-sm text-muted-foreground">
+              Application Number
+            </p>
+
+            <h1 className="text-3xl font-bold">
+              {data.tracking_number}
+            </h1>
+
+            <p className="mt-2 text-sm text-muted-foreground">
+              {data.service?.name || data.service_id}
             </p>
           </div>
 
-          <Button asChild className="rounded-2xl">
-            <Link href="/services">
-              <Plus className="mr-2 h-4 w-4" />
-              New Application
-            </Link>
-          </Button>
+          <ApplicationStatusBadge status={data.status} />
         </div>
       </div>
 
-      {/* FILTER CARDS */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        {STATUS_FILTERS.map((item) => {
-          const active = status === item.key;
+      {appointment && (
+        <Card className="rounded-3xl border-primary/20 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-primary" />
+              Appointment Schedule
+            </CardTitle>
+          </CardHeader>
 
-          return (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => changeStatus(item.key)}
-              className={`rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 ${
-                active
-                  ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : "bg-card"
-              }`}
-            >
-              <div className="mb-2 flex justify-between">
-                <span className="text-xs font-semibold uppercase text-muted-foreground">
-                  {item.label}
-                </span>
-                <FileText className="h-4 w-4" />
+          <CardContent className="grid gap-4 md:grid-cols-4">
+            <Info
+              label="Appointment Date"
+              value={formatDate(appointment.appointment_at)}
+            />
+
+            <Info
+              label="Appointment Time"
+              value={formatTime(appointment.appointment_at)}
+            />
+
+            <Info
+              label="Location"
+              value={appointment.location || "-"}
+            />
+
+            <Info
+              label="Status"
+              value={appointment.status || "scheduled"}
+            />
+
+            {appointment.message && (
+              <div className="rounded-2xl border bg-background p-4 md:col-span-4">
+                <p className="text-sm text-muted-foreground">
+                  Officer Message
+                </p>
+
+                <p className="mt-1 font-medium">
+                  {appointment.message}
+                </p>
               </div>
-              <p className="text-2xl font-bold">{getCount(item.key)}</p>
-            </button>
-          );
-        })}
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="rounded-3xl xl:col-span-2">
+          <CardHeader>
+            <CardTitle>Application Information</CardTitle>
+          </CardHeader>
+
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <Info
+              label="Service"
+              value={data.service?.name || data.service_id}
+            />
+
+            <Info
+              label="Tracking Number"
+              value={data.tracking_number}
+            />
+
+            <Info
+              label="Administrative Level"
+              value={data.administrative_level || "-"}
+            />
+
+            <Info
+              label="Location"
+              value={locationText(data)}
+            />
+
+            <Info
+              label="Submitted Date"
+              value={formatDateTime(data.submitted_at)}
+            />
+
+            <Info
+              label="Completed Date"
+              value={formatDateTime(data.completed_at)}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-3xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary" />
+              Current Status
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            <ApplicationStatusBadge status={data.status} />
+
+            {data.current_window && (
+              <p className="text-sm text-muted-foreground">
+                Current Window:{" "}
+                {relationName(data.current_window)}
+              </p>
+            )}
+
+            {data.current_officer && (
+              <p className="text-sm text-muted-foreground">
+                Current Officer:{" "}
+                {relationName(data.current_officer)}
+              </p>
+            )}
+
+            {data.rejection_reason && (
+              <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-700">
+                {data.rejection_reason}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* TABLE CARD */}
-      <Card className="rounded-3xl">
-        <CardHeader className="flex flex-col gap-4 border-b md:flex-row md:items-center md:justify-between">
-          <div>
-            <CardTitle>{activeLabel} Applications</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {meta?.total || 0} record(s)
-            </p>
-          </div>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card className="rounded-3xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              Submitted Data
+            </CardTitle>
+          </CardHeader>
 
-          <div className="relative w-full md:max-w-sm">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              placeholder="Search tracking number..."
-              className="pl-10"
-            />
-          </div>
+          <CardContent className="space-y-3">
+            {data.data?.length ? (
+              data.data.map((item: any) => (
+                <div
+                  key={item.id}
+                  className="rounded-2xl border p-4"
+                >
+                  <p className="text-sm font-medium">
+                    {item.field_name}
+                  </p>
+
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {item.field_value || "-"}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No submitted data found.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-3xl">
+          <CardHeader>
+            <CardTitle>Documents</CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <ApplicationFilesList files={data.files} />
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="rounded-3xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock3 className="h-5 w-5 text-primary" />
+            Workflow Timeline
+          </CardTitle>
         </CardHeader>
 
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Application ID</TableHead>
-                  <TableHead>Queue No</TableHead>
-                  <TableHead>Queue Position</TableHead>
-                  <TableHead>Submission Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Feedback</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-<TableBody>
-  {isLoading ? (
-    <TableRow>
-      <TableCell colSpan={6} className="py-10 text-center">
-        Loading...
-      </TableCell>
-    </TableRow>
-  ) : applications.length ? (
-    applications.map((application: any) => {
-      const actions = applicationActions(application);
-
-      return (
-        <TableRow key={application.id}>
-          {/* Application ID */}
-          <TableCell className="font-semibold">
-            {application.tracking_number || `APP-${application.id}`}
-          </TableCell>
-
-          {/* Queue No */}
-          <TableCell>
-            {application.queue?.queue_number ?? "-"}
-          </TableCell>
-
-          {/* Queue Position */}
-          <TableCell>
-            {application.queue_info ? (
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">
-                  #{application.queue_info.applications_ahead + 1}
-                </span>
-
-                {getQueueBadge(
-                  application.queue_info.status,
-                  application.queue_info.is_next
-                )}
-
-                <span className="text-[11px] text-muted-foreground">
-                  Ahead: {application.queue_info.applications_ahead}
-                </span>
-              </div>
-            ) : (
-              "-"
-            )}
-          </TableCell>
-
-          {/* Date */}
-          <TableCell>
-            {application.submitted_at
-              ? new Date(application.submitted_at).toLocaleDateString()
-              : "-"}
-          </TableCell>
-
-          {/* Status */}
-          <TableCell>
-            <ApplicationStatusBadge status={application.status} />
-          </TableCell>
-            <TableCell>
-  {application.status?.toLowerCase() === "completed" &&
-  (application.feedback?.token || application.feedback_token) ? (
-    <Link
-      href={`/customer-feedback/${
-        application.feedback?.token || application.token
-      }`}
-      className="font-medium text-green-600 hover:underline"
-    >
-      Customer Satisfaction
-    </Link>
-  ) : (
-    <span className="text-muted-foreground">-</span>
-  )}
-</TableCell>
-
-
-          {/* Actions */}
-          <TableCell className="text-right">
-            <div className="flex flex-wrap justify-end gap-2">
-              {actions.map((item: any, index: number) => (
-                <span key={item.label} className="inline-flex items-center">
-                  {index > 0 && (
-                    <span className="mx-1 text-muted-foreground">|</span>
-                  )}
-
-                  <Link
-                    href={item.href}
-                    className="font-medium text-primary hover:underline"
-                  >
-                    {item.label} 
-                  </Link>
-                </span>
-              ))}
-            </div>
-          </TableCell>
-        </TableRow>
-      );
-    })
-  ) : (
-    <TableRow>
-      <TableCell colSpan={6} className="py-12 text-center text-muted-foreground">
-        No applications found.
-      </TableCell>
-    </TableRow>
-  )}
-</TableBody>
-            </Table>
-          </div>
-
-          {/* PAGINATION */}
-          <div className="flex items-center justify-between border-t p-4">
-            <p className="text-sm text-muted-foreground">
-              Page {meta?.current_page || 1} of {meta?.last_page || 1}
-            </p>
-
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                disabled={!meta || meta.current_page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </Button>
-
-              <Button
-                variant="outline"
-                disabled={
-                  !meta || meta.current_page >= meta.last_page
-                }
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+        <CardContent>
+          <ApplicationWorkflowTimeline
+            workflow={data.workflow || data.workflows}
+            histories={data.histories}
+          />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function Info({
+  label,
+  value,
+}: {
+  label: string;
+  value: any;
+}) {
+  return (
+    <div className="rounded-2xl border bg-background p-4">
+      <p className="text-sm text-muted-foreground">
+        {label}
+      </p>
+
+      <p className="mt-1 font-medium capitalize">
+        {value || "-"}
+      </p>
     </div>
   );
 }

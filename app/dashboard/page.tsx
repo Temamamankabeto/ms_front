@@ -32,9 +32,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getDashboardForRole } from "@/config/dashboard.config";
 import { useCustomerApplications } from "@/hooks/customer/use-customer-applications";
 import { useDashboardOverview } from "@/hooks/dashboard/use-dashboard";
+import { authService } from "@/services/auth/auth.service";
 
 function numberValue(value: unknown) {
   return Number(value || 0);
@@ -83,11 +83,26 @@ const statusCards = [
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useDashboardOverview();
-  const { data: recentApplicationsResponse, isLoading: recentLoading } = useCustomerApplications({
+  const { data: recentData, isLoading: recentLoading } = useCustomerApplications({
     page: 1,
   });
 
-  if (isLoading) {
+  const storedUser = authService.getStoredUser?.();
+  const storedRoles = authService.getStoredRoles?.() || [];
+  const profile = (data as any)?.profile || storedUser || {};
+  const role = String(
+    profile?.role ||
+      profile?.roles?.[0] ||
+      storedRoles?.[0] ||
+      ""
+  ).toLowerCase();
+  const isCustomer = role.includes("customer");
+
+  if (!isCustomer) {
+    return <RoleBasedDashboard />;
+  }
+
+  if (isLoading && !recentData) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -95,7 +110,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (error || !data) {
+  if (error && !recentData && !data) {
     return (
       <div className="rounded-2xl border bg-card p-6 text-sm text-red-600">
         Failed to load dashboard.
@@ -103,15 +118,7 @@ export default function DashboardPage() {
     );
   }
 
-  const dashboard = getDashboardForRole(data.profile.role);
-  const Icon = dashboard.icon;
-  const status = data.status_counts || {};
-  const modules = data.module_counts || {};
-  const isCustomer = String(data.profile.role).toLowerCase().includes("customer");
-
-  if (!isCustomer) {
-    return <RoleBasedDashboard />;
-  }
+  const status = (recentData as any)?.meta?.status_counts || (data as any)?.status_counts || {};
 
   const customerStatusCards = [
     {
@@ -152,7 +159,6 @@ export default function DashboardPage() {
     },
   ];
 
-  const recentData = ((recentApplicationsResponse as any)?.data ?? recentApplicationsResponse) as any;
   const recentApplications = (recentData?.data || []).slice(0, 8);
 
   function customerActionLinks(application: any) {
@@ -203,7 +209,7 @@ export default function DashboardPage() {
           <div>
             <p className="text-sm text-white/75">City Building</p>
             <h1 className="mt-2 text-2xl font-bold md:text-3xl">
-              Welcome back, {data.profile.name}! 👋
+              Welcome back, {profile?.name || 'Customer'}! 👋
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-white/85">
               Track your applications, follow office decisions, and access your

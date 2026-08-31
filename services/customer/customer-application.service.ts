@@ -7,11 +7,27 @@ export type CustomerApplicationsParams = {
   search?: string;
 };
 
+export type CustomerApplicationsResponse = {
+  data: any[];
+  meta?: {
+    current_page?: number;
+    last_page?: number;
+    per_page?: number;
+    total?: number;
+    status_counts?: Record<string, number>;
+    [key: string]: any;
+  };
+  [key: string]: any;
+};
+
 function queryString(params: CustomerApplicationsParams = {}) {
   const query = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === "") return;
+    if (value === undefined || value === null || value === "" || value === "all") {
+      return;
+    }
+
     query.set(key, String(value));
   });
 
@@ -20,21 +36,44 @@ function queryString(params: CustomerApplicationsParams = {}) {
   return text ? `?${text}` : "";
 }
 
+function normalizeListResponse(response: any): CustomerApplicationsResponse {
+  const payload = unwrap(response) as any;
+
+  if (Array.isArray(payload)) {
+    return { data: payload, meta: {} };
+  }
+
+  if (Array.isArray(payload?.data)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.data?.data)) {
+    return {
+      ...payload.data,
+      meta: payload.data.meta ?? payload.meta ?? {},
+    };
+  }
+
+  return { data: [], meta: payload?.meta ?? payload?.data?.meta ?? {} };
+}
+
 export const customerApplicationService = {
-  async list(params: CustomerApplicationsParams = {}) {
+  async list(params: CustomerApplicationsParams = {}): Promise<CustomerApplicationsResponse> {
     const response = await api.get(
       `/customer/service-applications${queryString(params)}`
     );
 
-    return unwrap(response);
+    return normalizeListResponse(response);
   },
 
-  async details(id: number | string) {
+  async details(id: number | string): Promise<any> {
     const response = await api.get(`/customer/service-applications/${id}`);
-    return unwrap(response);
+    const payload = unwrap(response) as any;
+
+    return payload?.data ?? payload;
   },
 
-  async resubmit(id: number | string, payload: FormData) {
+  async resubmit(id: number | string, payload: FormData): Promise<any> {
     const response = await api.post(
       `/customer/service-applications/${id}/resubmit`,
       payload,

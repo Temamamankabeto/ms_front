@@ -91,3 +91,79 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+
+  deploy:
+    name: Deploy verified release to Ubuntu
+    needs: build
+    if: ${{ github.ref == 'refs/heads/main' && vars.MESOB_AUTO_DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout deployment script
+        uses: actions/checkout@v4
+
+      - name: Confirm this is the latest main commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin main
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA" || {
+            echo 'A newer main commit exists; skipping stale deployment.' >&2
+            exit 1
+          }
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mesob-frontend-${{ github.sha }}
+          path: deployment-artifact
+
+      - name: Verify release checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd deployment-artifact
+          sha256sum -c "mesob-frontend-${GITHUB_SHA}.zip.sha256"
+          unzip -tq "mesob-frontend-${GITHUB_SHA}.zip"
+
+      - name: Configure pinned deployment SSH
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.MESOB_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.MESOB_DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.MESOB_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?Missing MESOB_DEPLOY_HOST}"
+          : "${DEPLOY_USER:?Missing MESOB_DEPLOY_USER}"
+          : "${DEPLOY_KEY:?Missing MESOB_DEPLOY_SSH_KEY}"
+          test "$DEPLOY_USER" = 'mesobdeploy'
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null
+          ssh-keyscan -T 10 -t ed25519 "$DEPLOY_HOST" > "$HOME/.ssh/known_hosts" 2>/dev/null
+          test -s "$HOME/.ssh/known_hosts"
+          FINGERPRINT=$(ssh-keygen -lf "$HOME/.ssh/known_hosts" -E sha256 | awk '{print $2}')
+          test "$FINGERPRINT" = 'SHA256:JORh7HsxyasAKw29nUoJwE5RYf7TIiJ2VKMZmlLHIkw' || {
+            echo 'SSH server host key mismatch' >&2
+            exit 1
+          }
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Upload and activate release
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.MESOB_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.MESOB_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          REMOTE="${DEPLOY_USER}@${DEPLOY_HOST}"
+          SSH_OPTS=(-o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
+          ssh "${SSH_OPTS[@]}" "$REMOTE" 'mkdir -p /var/www/mesob-frontend-releases/shared/incoming'
+          scp "${SSH_OPTS[@]}" \
+            "deployment-artifact/mesob-frontend-${GITHUB_SHA}.zip" \
+            "deployment-artifact/mesob-frontend-${GITHUB_SHA}.zip.sha256" \
+            "$REMOTE:/var/www/mesob-frontend-releases/shared/incoming/"
+          ssh -T "${SSH_OPTS[@]}" "$REMOTE" "bash -s -- '$GITHUB_SHA'" \
+            < scripts/deploy/mesob-frontend-deploy.sh

@@ -66,6 +66,7 @@ if [ -e "$TARGET" ] || [ -L "$TARGET" ]; then
   echo "Existing verified release: $ID"
 else
   STAGE="$(mktemp -d "$RELEASES/.install-${ID}.XXXXXXXX")"
+  chmod 750 "$STAGE"
   cleanup() { if [ -n "${STAGE:-}" ] && [ -d "$STAGE" ]; then rm -rf -- "$STAGE"; fi; }
   trap cleanup EXIT
 

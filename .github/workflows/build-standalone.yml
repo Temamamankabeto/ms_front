@@ -48,16 +48,21 @@ jobs:
 
           test -f .next/standalone/server.js
           test -d .next/static
+          test -s package-lock.json
 
           mkdir -p release/.next
           cp -a .next/standalone/. release/
           cp -a .next/static release/.next/static
+          cp package-lock.json release/package-lock.json
 
           if [ -d public ]; then
             cp -a public release/public
           fi
 
           test -f release/server.js
+          test -s release/.next/BUILD_ID
+          test -f release/node_modules/next/package.json
+          test -s release/package-lock.json
           test -d release/.next/static
 
           printf '%s\n' \

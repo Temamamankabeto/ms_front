@@ -5,12 +5,14 @@ import { useEffect, useState } from "react";
 import { UserRound } from "lucide-react";
 import { resolveProfileImageUrl } from "@/lib/profile-image-url";
 
+
+
 type CurrentTicket = {
   ticket_number: string;
   status: "called" | "serving";
   window_name: string | null;
   window_title: string | null;
-  
+
 };
 type CounterData = {
   officer_code: string;

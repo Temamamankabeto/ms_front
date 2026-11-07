@@ -1,0 +1,350 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Building2,
+  Loader2,
+  MapPin,
+  Pin,
+  PinOff,
+  Ticket,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+type Level = "city" | "subcity" | "woreda";
+
+type TicketService = {
+  id: number;
+  name: string;
+};
+
+type TicketWindow = {
+  id: number;
+  name: string;
+  title: string | null;
+  services_count: number;
+  services: TicketService[];
+};
+
+type ApiResponse = {
+  success: boolean;
+  message: string;
+  data: TicketWindow[];
+};
+
+const levels: { id: Level; label: string }[] = [
+  { id: "city", label: "City" },
+  { id: "subcity", label: "Subcity" },
+  { id: "woreda", label: "Woreda" },
+];
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const PIN_STORAGE_KEY = "mesob_ticket_pinned_level";
+
+export default function TicketPage() {
+  const [level, setLevel] = useState<Level | null>(null);
+  const [pinnedLevel, setPinnedLevel] = useState<Level | null>(null);
+  const [pinLoaded, setPinLoaded] = useState(false);
+  const [windows, setWindows] = useState<TicketWindow[]>([]);
+  const [selectedWindow, setSelectedWindow] =
+    useState<TicketWindow | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(PIN_STORAGE_KEY);
+
+      if (saved === "city" || saved === "subcity" || saved === "woreda") {
+        setPinnedLevel(saved);
+        setLevel(saved);
+      }
+    } catch {
+      // Browser storage may be unavailable.
+    } finally {
+      setPinLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pinLoaded || !level) return;
+
+    const controller = new AbortController();
+
+    async function loadWindows() {
+      setLoading(true);
+      setError(null);
+      setWindows([]);
+
+      try {
+        if (!API_BASE_URL) {
+          throw new Error("MESOB API URL is not configured.");
+        }
+
+        const response = await fetch(
+          `${API_BASE_URL}/public/ticket/windows?administrative_level=${level}`,
+          {
+            signal: controller.signal,
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          }
+        );
+
+        const result: ApiResponse = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.message || "Unable to retrieve ticket windows."
+          );
+        }
+
+        if (!controller.signal.aborted) {
+          setWindows(result.data);
+        }
+      } catch (cause) {
+        if (!controller.signal.aborted) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Unable to load windows."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadWindows();
+
+    return () => controller.abort();
+  }, [level, pinLoaded]);
+
+  function selectLevel(value: Level) {
+    if (pinnedLevel) return;
+
+    setSelectedWindow(null);
+    setWindows([]);
+    setError(null);
+    setLevel(value);
+  }
+
+  function pinLocation() {
+    if (!level) return;
+
+    try {
+      window.localStorage.setItem(PIN_STORAGE_KEY, level);
+      setPinnedLevel(level);
+    } catch {
+      setError("Unable to save the pinned location in this browser.");
+    }
+  }
+
+  function unpinLocation() {
+    try {
+      window.localStorage.removeItem(PIN_STORAGE_KEY);
+      setPinnedLevel(null);
+      setLevel(null);
+      setSelectedWindow(null);
+      setWindows([]);
+      setError(null);
+    } catch {
+      setError("Unable to remove the pinned location.");
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-8">
+      <div className="mx-auto max-w-5xl space-y-8">
+        <header className="rounded-2xl bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <Ticket className="h-9 w-9 text-blue-700" />
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">
+                MESOB Ticket Kiosk
+              </h1>
+              <p className="text-sm text-slate-600">
+                Select your administrative level, window and service.
+              </p>
+            </div>
+          </div>
+        </header>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold">
+            {pinnedLevel ? "1. Pinned Administrative Level" : "1. Select Administrative Level"}
+          </h2>
+
+          {pinnedLevel ? (
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5">
+              <div className="flex items-center gap-3">
+                <Pin className="h-6 w-6 text-blue-700" />
+                <div>
+                  <p className="font-semibold text-slate-900">
+                    {levels.find((item) => item.id === pinnedLevel)?.label}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Pinned in this browser
+                  </p>
+                </div>
+              </div>
+              <Button type="button" variant="outline" onClick={unpinLocation}>
+                <PinOff className="mr-2 h-4 w-4" />
+                Unpin Location
+              </Button>
+            </div>
+          ) : (
+            <>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {levels.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => selectLevel(item.id)}
+                aria-pressed={level === item.id}
+                className={`rounded-xl border-2 bg-white p-6 text-left shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${
+                  level === item.id
+                    ? "border-blue-700"
+                    : "border-slate-200 hover:border-blue-400"
+                }`}
+              >
+                {item.id === "city" ? (
+                  <Building2 className="mb-3 h-8 w-8" />
+                ) : (
+                  <MapPin className="mb-3 h-8 w-8" />
+                )}
+
+                <span className="text-lg font-semibold">
+                  {item.label}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {level && (
+            <Button type="button" onClick={pinLocation}>
+              <Pin className="mr-2 h-4 w-4" />
+              Pin Location
+            </Button>
+          )}
+            </>
+          )}
+        </section>
+
+        {pinLoaded && level && (
+          <section className="space-y-4">
+            <h2 className="text-xl font-semibold">
+              2. Select Service Window
+            </h2>
+
+            {loading && (
+              <div role="status" className="flex items-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Loading windows...
+              </div>
+            )}
+
+            {error && (
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700"
+              >
+                {error}
+              </div>
+            )}
+
+            {!loading && !error && windows.length === 0 && (
+              <p className="text-slate-600">
+                No service windows available at this level.
+              </p>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {windows.map((window) => (
+                <button
+                  key={window.id}
+                  type="button"
+                  onClick={() => setSelectedWindow(window)}
+                  aria-pressed={selectedWindow?.id === window.id}
+                  className={`rounded-xl border-2 bg-white p-5 text-left shadow-sm ${
+                    selectedWindow?.id === window.id
+                      ? "border-blue-700"
+                      : "border-slate-200 hover:border-blue-400"
+                  }`}
+                >
+                  <h3 className="font-semibold">{window.name}</h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {window.services_count} assigned services
+                  </p>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <Dialog
+          open={selectedWindow !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedWindow(null);
+          }}
+        >
+          <DialogContent className="flex max-h-[85dvh] w-[calc(100vw-2rem)] max-w-2xl flex-col overflow-hidden p-0 sm:rounded-2xl">
+            <DialogHeader className="shrink-0 border-b px-6 py-5 pr-12 text-left">
+              <DialogTitle className="text-xl font-bold">
+                Select Service
+              </DialogTitle>
+              <DialogDescription>
+                {selectedWindow?.name}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+              <p className="text-sm font-medium text-slate-600">
+                {selectedWindow?.services.length ?? 0} assigned services
+              </p>
+
+              {selectedWindow?.services.map((service) => (
+                <div
+                  key={service.id}
+                  className="rounded-xl border border-slate-200 bg-white p-4"
+                >
+                  <p className="font-medium text-slate-900">
+                    {service.name}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Ticket generation will be enabled after backend verification.
+                  </p>
+                </div>
+              ))}
+
+              {selectedWindow?.services.length === 0 && (
+                <p className="py-6 text-center text-slate-500">
+                  No services are assigned to this window.
+                </p>
+              )}
+            </div>
+
+            <div className="shrink-0 border-t bg-slate-50 px-6 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => setSelectedWindow(null)}
+              >
+                Close
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </main>
+  );
+}

@@ -912,13 +912,8 @@ export default function TicketPage() {
         >
           <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
             <DialogHeader>
-              <img
-                src="/mesob-kiosk-logo.png"
-                alt="MESOB official logo"
-                className="mx-auto mb-2 h-20 w-20 object-contain"
-              />
               <DialogTitle className="text-center text-xl">
-                MESOB eService
+                Adama Masob
               </DialogTitle>
               <DialogDescription className="text-center">
                 Queue Ticket
@@ -957,12 +952,7 @@ export default function TicketPage() {
         {receiptOpen && issuedTicket && (
           <section id="mesob-print-ticket" aria-label="Printable queue ticket">
             <div className="ticket-brand" style={{ textAlign: "center", marginBottom: "10px" }}>
-              <img
-                src="/mesob-kiosk-logo.png"
-                alt="MESOB official logo"
-                style={{ width: "64px", height: "64px", objectFit: "contain", margin: "0 auto 4px", display: "block" }}
-              />
-              <strong>MESOB Adaamaa</strong>
+              <strong>Adama Masob</strong>
               <div>Queue Ticket</div>
             </div>
             <div className="ticket-number-box">

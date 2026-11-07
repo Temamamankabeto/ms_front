@@ -95,7 +95,7 @@ jobs:
   deploy:
     name: Deploy verified release to Ubuntu
     needs: build
-    if: ${{ github.ref == 'refs/heads/main' && vars.MESOB_AUTO_DEPLOY_ENABLED == 'true' }}
+    if: ${{ github.ref == 'refs/heads/main' && (vars.MESOB_AUTO_DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:

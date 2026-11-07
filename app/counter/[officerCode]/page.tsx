@@ -10,6 +10,7 @@ type CurrentTicket = {
   status: "called" | "serving";
   window_name: string | null;
   window_title: string | null;
+  
 };
 type CounterData = {
   officer_code: string;

@@ -1,0 +1,73 @@
+name: Verify MESOB Deployment SSH
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify Ubuntu deployment connection
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Configure deployment SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.MESOB_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.MESOB_DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.MESOB_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?Missing deployment host}"
+          : "${DEPLOY_USER:?Missing deployment user}"
+          : "${DEPLOY_KEY:?Missing deployment SSH key}"
+
+          test "$DEPLOY_USER" = "mesobdeploy"
+
+          install -d -m 700 ~/.ssh
+
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
+
+          ssh-keyscan -T 10 -t ed25519 "$DEPLOY_HOST" \
+            > ~/.ssh/known_hosts 2>/dev/null
+
+          test -s ~/.ssh/known_hosts
+
+          ACTUAL=$(
+            ssh-keygen -lf ~/.ssh/known_hosts -E sha256 |
+            awk '{print $2}'
+          )
+
+          EXPECTED="SHA256:JORh7HsxyasAKw29nUoJwE5RYf7TIiJ2VKMZmlLHIkw"
+
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "SSH host fingerprint mismatch"
+            exit 1
+          fi
+
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Verify production access
+        env:
+          DEPLOY_HOST: ${{ secrets.MESOB_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.MESOB_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+
+          ssh \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'set -eu
+             test "$(whoami)" = "mesobdeploy"
+             test -f /var/www/mesob-frontend-releases/current/server.js
+             curl -fsS --max-time 10 -o /dev/null http://127.0.0.1:3000/login
+             echo SSH_DEPLOYMENT_PREFLIGHT=PASSED'

@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mesob-frontend-build-${{ github.ref }}
+  group: mesob-frontend-production
   cancel-in-progress: false
 
 jobs:

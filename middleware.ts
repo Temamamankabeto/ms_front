@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(request: NextRequest) {
-  const token = request.cookies.get("refresh_token")?.value;
-
-  // ✅ SAFE ROLE (avoid crash + normalize)
-  const role = null;
+  // The refresh_token is an HttpOnly cookie issued by the Laravel API host.
+  // It is not necessarily available to Next.js on the frontend host.
+  // Never use its absence here as proof that the user is logged out.
 
   const pathname = request.nextUrl.pathname;
 
@@ -32,6 +31,8 @@ export function middleware(request: NextRequest) {
 
   // Public kiosk feedback form — no login required at the service window.
   "/feedback",
+
+  // Public MESOB ticket kiosk — no login required.
   "/ticket",
 ];
 
@@ -47,38 +48,12 @@ export function middleware(request: NextRequest) {
     isTrainingAsset ||
     isTrainingPage;
 
-  /**
-   * =========================
-   * 1. NOT LOGGED IN (BLOCK PRIVATE ROUTES)
-   * =========================
-   */
-  if (!token && !isPublicRoute) {
-    const url = new URL("/login", request.url);
-    url.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(url);
-  }
-
-  /**
-   * =========================
-   * 2. APPLY PAGE (ONLY CUSTOMER ALLOWED)
-   * =========================
-   */
-  if (isApplyPage) {
-    if (!token) {
-      const url = new URL("/login", request.url);
-      url.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(url);
-    }
-  }
-
-  /**
-   * =========================
-   * 3. BLOCK LOGIN IF LOGGED IN
-   * =========================
-   */
-  if (token && (pathname === "/login" || pathname === "/register")) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
+  // Authentication is validated by the dashboard's authenticated API request.
+  // Public routes and private routes remain protected by their existing
+  // client-side guards and Laravel's authorization middleware.
+  // Do not redirect based on a cookie belonging to another origin.
+  void isPublicRoute;
+  void isApplyPage;
 
   return NextResponse.next();
 }

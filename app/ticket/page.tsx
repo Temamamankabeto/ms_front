@@ -75,6 +75,7 @@ type IssuedTicket = {
   priority: string;
   status: string;
   created_at: string;
+  officer_code?: string | null;
 };
 
 type PendingTicketRequest = {
@@ -88,6 +89,8 @@ type PendingTicketRequest = {
   priority: "normal";
 };
 
+type TicketStatistics = { total_tickets: number; today_tickets: number };
+
 type ApiResponse<T> = {
   success: boolean;
   message: string;
@@ -95,6 +98,28 @@ type ApiResponse<T> = {
 };
 
 const API_BASE_URL = "/api";
+
+async function readTicketApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error(
+      `Ticket service returned HTTP ${response.status} instead of JSON. ` +
+      "Check the MESOB backend server and its Laravel logs."
+    );
+  }
+
+  let result: ApiResponse<T>;
+  try {
+    result = (await response.json()) as ApiResponse<T>;
+  } catch {
+    throw new Error(`Invalid ticket service response (HTTP ${response.status}).`);
+  }
+  if (!result || typeof result.success !== "boolean") {
+    throw new Error(`Unexpected ticket service response (HTTP ${response.status}).`);
+  }
+  return result;
+}
+
 const PIN_STORAGE_KEY = "mesob_ticket_pinned_location_v1";
 const OLD_PIN_STORAGE_KEY = "mesob_ticket_pinned_level";
 
@@ -196,6 +221,8 @@ function findLocation(
 }
 
 export default function TicketPage() {
+  const [statistics, setStatistics] = useState<TicketStatistics | null>(null);
+  const [serviceSearch, setServiceSearch] = useState("");
   const [locations, setLocations] = useState<Locations | null>(null);
   const [locationsLoading, setLocationsLoading] = useState(true);
   const [locationsError, setLocationsError] = useState<string | null>(null);
@@ -219,6 +246,32 @@ export default function TicketPage() {
   const [ticketError, setTicketError] = useState<string | null>(null);
   const pendingTicketRef = useRef<PendingTicketRequest | null>(null);
   const ticketInFlightRef = useRef(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadStatistics() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/public/ticket/statistics`, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const result = await readTicketApiResponse<TicketStatistics>(response);
+        if (result.success && !controller.signal.aborted) setStatistics(result.data);
+      } catch {
+        // Ticket issuing remains available if statistics are temporarily offline.
+      }
+    }
+
+    void loadStatistics();
+    const interval = window.setInterval(() => void loadStatistics(), 30000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -434,7 +487,7 @@ export default function TicketPage() {
           }
         );
 
-        const result: ApiResponse<TicketWindow[]> = await response.json();
+        const result = await readTicketApiResponse<TicketWindow[]>(response);
 
         if (!response.ok || !result.success) {
           throw new Error(result.message || "Unable to load service windows.");
@@ -523,7 +576,7 @@ export default function TicketPage() {
         }
       );
 
-      const result: ApiResponse<IssuedTicket> = await response.json();
+      const result = await readTicketApiResponse<IssuedTicket>(response);
 
       if (!response.ok || !result.success || !result.data?.ticket_number) {
         throw new Error(
@@ -587,6 +640,13 @@ export default function TicketPage() {
     };
   }, [receiptOpen, issuedTicket]);
 
+  const filteredServices = useMemo(() => {
+    const query = serviceSearch.trim().toLocaleLowerCase();
+    return selectedWindow?.services.filter((service) =>
+      service.name.toLocaleLowerCase().includes(query)
+    ) ?? [];
+  }, [selectedWindow, serviceSearch]);
+
   function newTicket() {
     setReceiptOpen(false);
     setIssuedTicket(null);
@@ -596,18 +656,21 @@ export default function TicketPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8">
-      <div className="mx-auto max-w-5xl space-y-8">
-        <header className="rounded-2xl bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <Ticket className="h-9 w-9 text-blue-700" />
+    <main className="min-h-screen bg-gradient-to-br from-[#3587d2] via-[#4b80bf] to-[#7d90c0] px-3 py-4 sm:px-5 sm:py-5">
+      <div className="mx-auto max-w-[1800px] space-y-8">
+        <header className="rounded-[26px] border border-white/70 bg-[#2d4b98] px-5 py-10 text-center text-white shadow-lg sm:py-12">
+          <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-white p-2 shadow-lg sm:h-32 sm:w-32">
+            <img src="/mesob-kiosk-logo.png" alt="MESOB logo" className="h-full w-full object-contain" />
+          </div>
+          <h1 className="mt-5 text-4xl font-extrabold tracking-tight sm:text-5xl">MESOB Adaamaa</h1>
+          <div className="mt-5 grid gap-3 rounded-lg bg-white px-5 py-5 text-slate-800 sm:grid-cols-2">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">
-                MESOB Ticket Kiosk
-              </h1>
-              <p className="text-sm text-slate-600">
-                Select and pin the location for this browser.
-              </p>
+              <p className="text-lg font-bold">Tikkeettii Hanga Amma</p>
+              <p className="text-2xl font-extrabold" aria-live="polite">{statistics?.total_tickets.toLocaleString() ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-emerald-700">Tikkeettii Guyyaa Har’aa</p>
+              <p className="text-2xl font-extrabold" aria-live="polite">{statistics?.today_tickets.toLocaleString() ?? "—"}</p>
             </div>
           </div>
         </header>
@@ -782,9 +845,9 @@ export default function TicketPage() {
         </section>
 
         {storageLoaded && pinnedLocation && (
-          <section className="space-y-4">
+          <section className="space-y-5">
             <h2 className="text-xl font-semibold">
-              2. Select Service Window
+              Tajaajiloota
             </h2>
 
             {windowsLoading && (
@@ -806,18 +869,26 @@ export default function TicketPage() {
               </p>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {windows.map((window) => (
                 <button
                   key={window.id}
                   type="button"
-                  onClick={() => setSelectedWindow(window)}
-                  className="rounded-xl border-2 border-slate-200 bg-white p-5 text-left shadow-sm hover:border-blue-400"
+                  onClick={() => { setServiceSearch(""); setSelectedWindow(window); }}
+                  className="group flex min-h-44 items-center gap-5 rounded-[22px] border border-white/65 bg-[#2d4b98] p-6 text-left text-white shadow-md transition hover:bg-[#365baa] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-400 active:scale-[0.99]"
                 >
-                  <h3 className="font-semibold">{window.name}</h3>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {window.services_count} assigned services
-                  </p>
+                  <img
+                    src="/mesob-kiosk-logo.png"
+                    alt=""
+                    aria-hidden="true"
+                    loading="lazy"
+                    width={80}
+                    height={80}
+                    className="h-20 w-20 shrink-0 object-contain"
+                  />
+                  <div>
+                    <h3 className="text-xl font-extrabold leading-snug sm:text-2xl">{window.name}</h3>
+                  </div>
                 </button>
               ))}
             </div>
@@ -841,6 +912,11 @@ export default function TicketPage() {
         >
           <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
             <DialogHeader>
+              <img
+                src="/mesob-kiosk-logo.png"
+                alt="MESOB official logo"
+                className="mx-auto mb-2 h-20 w-20 object-contain"
+              />
               <DialogTitle className="text-center text-xl">
                 MESOB eService
               </DialogTitle>
@@ -861,8 +937,7 @@ export default function TicketPage() {
                 <div className="space-y-2 text-sm">
                   <p><strong>Service:</strong> {issuedTicket.service_name}</p>
                   <p><strong>Window:</strong> {issuedTicket.window_name}</p>
-                  <p><strong>Location:</strong> {pinnedLocation?.name}</p>
-                  <p><strong>Level:</strong> {issuedTicket.administrative_level}</p>
+                  <p><strong>Officer Code:</strong> {issuedTicket.officer_code?.trim() || "Not assigned"}</p>
                   <p><strong>Date:</strong> {new Date(issuedTicket.created_at).toLocaleString()}</p>
                 </div>
 
@@ -870,6 +945,7 @@ export default function TicketPage() {
                   Please wait until your ticket number is called.
                 </p>
 
+                <p className="text-center text-base font-bold text-slate-900">Free Call: 4191</p>
                 <p className="text-center text-xs text-slate-500">
                   Printing starts automatically.
                 </p>
@@ -880,6 +956,15 @@ export default function TicketPage() {
 
         {receiptOpen && issuedTicket && (
           <section id="mesob-print-ticket" aria-label="Printable queue ticket">
+            <div className="ticket-brand" style={{ textAlign: "center", marginBottom: "10px" }}>
+              <img
+                src="/mesob-kiosk-logo.png"
+                alt="MESOB official logo"
+                style={{ width: "64px", height: "64px", objectFit: "contain", margin: "0 auto 4px", display: "block" }}
+              />
+              <strong>MESOB Adaamaa</strong>
+              <div>Queue Ticket</div>
+            </div>
             <div className="ticket-number-box">
               <div>Your Ticket Number</div>
               <strong>{issuedTicket.ticket_number}</strong>
@@ -888,14 +973,14 @@ export default function TicketPage() {
             <div className="ticket-details">
               <p><strong>Service:</strong> {issuedTicket.service_name}</p>
               <p><strong>Window:</strong> {issuedTicket.window_name}</p>
-              <p><strong>Location:</strong> {pinnedLocation?.name}</p>
-              <p><strong>Level:</strong> {issuedTicket.administrative_level}</p>
+              <p><strong>Officer Code:</strong> {issuedTicket.officer_code?.trim() || "Not assigned"}</p>
               <p><strong>Date:</strong> {new Date(issuedTicket.created_at).toLocaleString()}</p>
             </div>
 
             <p className="ticket-footer">
               Please wait until your ticket number is called.
             </p>
+            <p className="ticket-free-call">Free Call: 4191</p>
           </section>
         )}
         {issuedTicket && !receiptOpen && (
@@ -919,42 +1004,48 @@ export default function TicketPage() {
             if (!open) setSelectedWindow(null);
           }}
         >
-          <DialogContent className="flex max-h-[85dvh] w-[calc(100vw-2rem)] max-w-2xl flex-col overflow-hidden p-0 sm:rounded-2xl">
-            <DialogHeader className="shrink-0 border-b px-6 py-5 pr-12 text-left">
-              <DialogTitle className="text-xl font-bold">
-                Select Service
+          <DialogContent className="flex max-h-[88dvh] w-[calc(100vw-2rem)] max-w-3xl flex-col overflow-hidden border-0 bg-[#f3f4f6] p-0 text-[#2e394c] shadow-2xl sm:rounded-[28px]">
+            <DialogHeader className="shrink-0 border-b border-slate-200 px-6 py-6 pr-14 text-left sm:px-9 sm:py-8">
+              <DialogTitle className="text-2xl font-extrabold tracking-tight text-[#2e394c] sm:text-3xl">
+                Tajaajiloota Filadhaa
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="mt-2 text-sm text-slate-600">
                 {selectedWindow?.name}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+            <div className="shrink-0 px-6 pb-3 pt-6 sm:px-9">
+              <label htmlFor="mesob-service-search" className="sr-only">Search services</label>
+              <input
+                id="mesob-service-search"
+                type="search"
+                value={serviceSearch}
+                onChange={(event) => setServiceSearch(event.target.value)}
+                placeholder="Search services..."
+                className="w-full rounded-2xl border border-[#d6deec] bg-white px-5 py-4 text-base text-slate-900 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#304f98]"
+              />
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 pb-6 pt-3 sm:px-9">
               {ticketError && (
                 <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                   {ticketError}
                 </div>
               )}
-              <p className="text-sm font-medium text-slate-600">
-                {selectedWindow?.services.length ?? 0} assigned services
-              </p>
 
-              {selectedWindow?.services.map((service) => (
+              {filteredServices.map((service) => (
                 <button
                   key={service.id}
                   type="button"
-                  className="w-full rounded-xl border border-slate-200 bg-white p-5 text-left transition hover:border-blue-400 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="block w-full min-h-36 rounded-[24px] bg-[#304e98] px-7 py-7 text-left text-white shadow-md transition hover:bg-[#3a5eac] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-40 sm:px-9"
                   disabled={ticketLoading || issuedTicket !== null}
                   onClick={() => void generateTicket(service)}
                 >
-                  <span className="block font-semibold text-slate-900">
+                  <span className="block text-lg font-bold leading-snug sm:text-2xl">
                     {service.name}
                   </span>
                   {ticketLoading && processingServiceId === service.id && (
-                    <span
-                      role="status"
-                      className="mt-2 block text-xs text-blue-700"
-                    >
+                    <span role="status" className="mt-3 block text-sm text-white/90">
                       Processing ticket...
                     </span>
                   )}
@@ -962,13 +1053,18 @@ export default function TicketPage() {
               ))}
 
               {selectedWindow?.services.length === 0 && (
-                <p className="py-6 text-center text-slate-500">
+                <p className="py-6 text-center text-slate-600">
                   No services are assigned to this window.
+                </p>
+              )}
+              {(selectedWindow?.services.length ?? 0) > 0 && filteredServices.length === 0 && (
+                <p className="py-6 text-center text-slate-600" role="status">
+                  No services match your search.
                 </p>
               )}
             </div>
 
-            <div className="shrink-0 border-t bg-slate-50 px-6 py-4">
+            <div className="shrink-0 border-t border-slate-200 bg-[#f3f4f6] px-6 py-4 sm:px-9">
               <Button
                 type="button"
                 variant="outline"

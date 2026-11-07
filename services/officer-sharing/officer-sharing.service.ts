@@ -1,8 +1,8 @@
 import api from "@/lib/api";
 
 export const officerSharingService = {
-  async windows() {
-    const response = await api.get("/officer/sharing/windows");
+  async windows(params?: { service_id?: number; level?: string }) {
+    const response = await api.get("/officer/sharing/windows", { params });
     return response.data.data;
   },
 

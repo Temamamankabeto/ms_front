@@ -25,6 +25,7 @@ type Form = {
   name: string;
   email: string;
   phone: string;
+  officer_code: string;
   password: string;
   confirm_password: string;
   date_of_birth: string;
@@ -36,6 +37,56 @@ type Form = {
   subcity_id: number | "";
   woreda_id: number | "";
 };
+
+type ValidationErrors = Record<string, string[]>;
+
+function friendlyValidationMessage(field: string, message: string): string {
+  const text = message.toLowerCase();
+  if (field === "password" && (text.includes("data leak") || text.includes("compromised") || text.includes("pwned"))) {
+    return "This password is not secure. Choose a different password.";
+  }
+  if (text.includes("already been taken") || text.includes("already registered")) {
+    if (field === "email") return "This email is already registered.";
+    if (field === "phone") return "This phone number is already registered.";
+    if (field === "officer_code") return "This officer code is already in use.";
+  }
+  if (field === "phone" && (text.includes("invalid") || text.includes("format"))) {
+    return "Enter a valid phone number.";
+  }
+  if (text.includes("required")) {
+    const label = field.replace(/_/g, " ");
+    return `Please enter or select ${label}.`;
+  }
+  if (field === "password" && text.includes("at least")) return "Password must be at least 8 characters.";
+  return message;
+}
+
+function parseApiError(error: unknown): { message: string; fields: ValidationErrors } {
+  const err = error as {
+    response?: { data?: unknown };
+    data?: unknown;
+    message?: string;
+  } | null;
+  const raw = err?.response?.data ?? err?.data;
+  const payload = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const nested = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : {};
+  const rawErrors = payload.errors ?? nested.errors;
+  const fields: ValidationErrors = {};
+  if (rawErrors && typeof rawErrors === "object" && !Array.isArray(rawErrors)) {
+    for (const [field, value] of Object.entries(rawErrors)) {
+      const messages = (Array.isArray(value) ? value : [value])
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => friendlyValidationMessage(field, item));
+      if (messages.length) fields[field] = messages;
+    }
+  }
+  const rawMessage = typeof payload.message === "string" ? payload.message : err?.message;
+  const generic = !rawMessage || /^(validation failed\.?|unprocessable entity|request failed with status code 422)$/i.test(rawMessage.trim());
+  const message = Object.keys(fields).length
+    ? "Please correct the highlighted fields."
+    : generic ? "Unable to save user. Please check the form and try again." : rawMessage;
+  return { message, fields };
+}
 
 export default function EditUserPage() {
   const { id } = useParams();
@@ -75,6 +126,7 @@ const woredas = Array.isArray(woredasData?.data)
     name: "",
     email: "",
     phone: "",
+    officer_code: "",
     password: "",
     confirm_password: "",
     date_of_birth: "",
@@ -87,7 +139,35 @@ const woredas = Array.isArray(woredasData?.data)
     woreda_id: "",
   });
 
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [submitError, setSubmitError] = useState("");
+
+  function clearError(field: string) {
+    setValidationErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+    setSubmitError("");
+  }
+
+  function fieldError(field: string) {
+    return validationErrors[field]?.length ? (
+      <p role="alert" className="mt-1 text-sm text-destructive">{validationErrors[field].join(" ")}</p>
+    ) : null;
+  }
+
   const selectedRole = useMemo(() => getRoleOption(form.role), [form.role]);
+
+  // Preserve the selected role when editing, even if the role-list endpoint is filtered.
+  const editableRoles = useMemo(() => {
+    const available = roles || [];
+    if (!form.role || available.some((role: any) => role.name === form.role)) {
+      return available;
+    }
+    return [...available, { name: form.role, label: roleLabel(form.role) }];
+  }, [roles, form.role]);
 
   const filteredSubcities = useMemo(() => {
   if (!Array.isArray(subcities)) return [];
@@ -122,6 +202,7 @@ const filteredWoredas = useMemo(() => {
       name: user.name || "",
       email: user.email || "",
       phone: user.phone || "",
+      officer_code: user.officer_code || "",
       password: "",
       confirm_password: "",
       date_of_birth: user.date_of_birth || "",
@@ -147,6 +228,7 @@ const filteredWoredas = useMemo(() => {
       name: user.name || "",
       email: user.email || "",
       phone: user.phone || "",
+      officer_code: user.officer_code || "",
       password: "",
       confirm_password: "",
       date_of_birth: user.date_of_birth || "",
@@ -163,6 +245,7 @@ const filteredWoredas = useMemo(() => {
   }
 
   function validate() {
+    if (form.officer_code.trim().length > 10) { toast.error("Officer Code must be 10 characters or fewer"); return false; }
     if (!form.role) {
       toast.error("Role is required");
       return false;
@@ -197,6 +280,8 @@ const filteredWoredas = useMemo(() => {
   }
 
   function handleUpdate() {
+    setValidationErrors({});
+    setSubmitError("");
     if (!validate()) return;
 
     updateUser.mutate(
@@ -206,6 +291,7 @@ const filteredWoredas = useMemo(() => {
           name: form.name,
           email: form.email,
           phone: form.phone,
+          officer_code: form.officer_code.trim() || null,
           address: form.address || undefined,
           date_of_birth: form.date_of_birth || undefined,
           gender: form.gender || undefined,
@@ -223,7 +309,10 @@ const filteredWoredas = useMemo(() => {
           router.push("/dashboard/users");
         },
         onError: (error: any) => {
-          toast.error(error?.message || "Failed to update user");
+          const result = parseApiError(error);
+          setValidationErrors(result.fields);
+          setSubmitError(result.message);
+          if (!Object.keys(result.fields).length) toast.error(result.message);
         },
       }
     );
@@ -248,21 +337,48 @@ const filteredWoredas = useMemo(() => {
         </CardHeader>
 
         <CardContent className="space-y-6">
+          {submitError && <div role="alert" aria-live="assertive" className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"><strong>Unable to update user:</strong> {submitError}</div>}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <Input placeholder="Name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-            <Input placeholder="Email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-            <Input placeholder="Phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-            <Input placeholder="Date of Birth" type="date" value={form.date_of_birth} onChange={(event) => setForm({ ...form, date_of_birth: event.target.value })} />
-            <Input placeholder="Address" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
+            <div className="min-w-0" onChangeCapture={() => clearError("name")}>
+<Input placeholder="Name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+{fieldError("name")}
+</div>
+            <div className="min-w-0" onChangeCapture={() => clearError("email")}>
+<Input placeholder="Email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+{fieldError("email")}
+</div>
+            <div className="min-w-0" onChangeCapture={() => clearError("phone")}>
+<Input placeholder="Phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+{fieldError("phone")}
+</div>
+          <div className="space-y-1">
+            <label htmlFor="officer-code" className="text-sm font-medium">Officer Code (optional)</label>
+            <div className="min-w-0" onChangeCapture={() => clearError("officer_code")}>
+<Input id="officer-code" placeholder="e.g. OFF-001" maxLength={10} value={form.officer_code} onChange={(e) => setForm({ ...form, officer_code: e.target.value })} />
+{fieldError("officer_code")}
+</div>
+          </div>
+            <div className="min-w-0" onChangeCapture={() => clearError("date_of_birth")}>
+<Input placeholder="Date of Birth" type="date" value={form.date_of_birth} onChange={(event) => setForm({ ...form, date_of_birth: event.target.value })} />
+{fieldError("date_of_birth")}
+</div>
+            <div className="min-w-0" onChangeCapture={() => clearError("address")}>
+<Input placeholder="Address" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
+{fieldError("address")}
+</div>
 
-            <select className="rounded border p-2" value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as any })}>
+            <div className="min-w-0" onChangeCapture={() => clearError("gender")}>
+<select className="rounded border p-2" value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as any })}>
               <option value="">Gender</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
+{fieldError("gender")}
+</div>
 
-            <select
+            <div className="min-w-0" onChangeCapture={() => clearError("role")}>
+<select
               className="rounded border p-2"
               value={form.role}
               onChange={(event) => {
@@ -279,15 +395,18 @@ const filteredWoredas = useMemo(() => {
               }}
             >
               <option value="">Role</option>
-              {roles.map((role: any) => (
+              {editableRoles.map((role: any) => (
                 <option key={role.id || role.name} value={role.name}>
                   {role.label || roleLabel(role.name)}
                 </option>
               ))}
             </select>
+{fieldError("role")}
+</div>
 
             {selectedRole.isScoped && (
-              <select
+              <div className="min-w-0" onChangeCapture={() => clearError("location_level")}>
+<select
                 className="rounded border p-2"
                 value={form.location_level}
                 onChange={(event) =>
@@ -306,10 +425,13 @@ const filteredWoredas = useMemo(() => {
                   </option>
                 ))}
               </select>
+{fieldError("location_level")}
+</div>
             )}
 
             {requiresCity && (
-              <select
+              <div className="min-w-0" onChangeCapture={() => clearError("city_id")}>
+<select
                 className="rounded border p-2"
                 value={form.city_id}
                 onChange={(event) =>
@@ -328,10 +450,13 @@ const filteredWoredas = useMemo(() => {
                   </option>
                 ))}
               </select>
+{fieldError("city_id")}
+</div>
             )}
 
             {requiresSubcity && (
-              <select
+              <div className="min-w-0" onChangeCapture={() => clearError("subcity_id")}>
+<select
                 className="rounded border p-2"
                 value={form.subcity_id}
                 disabled={!form.city_id}
@@ -350,10 +475,13 @@ const filteredWoredas = useMemo(() => {
                   </option>
                 ))}
               </select>
+{fieldError("subcity_id")}
+</div>
             )}
 
             {requiresWoreda && (
-              <select
+              <div className="min-w-0" onChangeCapture={() => clearError("woreda_id")}>
+<select
                 className="rounded border p-2"
                 value={form.woreda_id}
                 disabled={!form.subcity_id}
@@ -366,10 +494,18 @@ const filteredWoredas = useMemo(() => {
                   </option>
                 ))}
               </select>
+{fieldError("woreda_id")}
+</div>
             )}
 
-            <Input type="password" placeholder="New Password (optional)" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
-            <Input type="password" placeholder="Confirm Password" value={form.confirm_password} onChange={(event) => setForm({ ...form, confirm_password: event.target.value })} />
+            <div className="min-w-0" onChangeCapture={() => clearError("password")}>
+<Input type="password" placeholder="New Password (optional)" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
+{fieldError("password")}
+</div>
+            <div className="min-w-0" onChangeCapture={() => clearError("confirm_password")}>
+<Input type="password" placeholder="Confirm Password" value={form.confirm_password} onChange={(event) => setForm({ ...form, confirm_password: event.target.value })} />
+{fieldError("confirm_password")}
+</div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4">

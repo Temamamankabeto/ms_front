@@ -36,6 +36,7 @@ export type UserItem = {
   email: string;
 
   phone?: string | null;
+  officer_code?: string | null;
 
   status?: UserStatus;
 
@@ -99,6 +100,7 @@ export type UserListParams = {
 /* ================= CREATE USER ================= */
 
 export type CreateUserPayload = {
+  officer_code?: string | null;
   name: string;
 
   email: string;
@@ -125,6 +127,7 @@ export type CreateUserPayload = {
 /* ================= UPDATE USER ================= */
 
 export type UpdateUserPayload = {
+  officer_code?: string | null;
   name: string;
 
   email: string;

@@ -45,16 +45,6 @@ export default function ChangePasswordPage() {
       return false;
     }
 
-    if (!/[A-Z]/.test(form.new_password)) {
-      toast.error("Must contain 1 uppercase letter");
-      return false;
-    }
-
-    if (!/[!@#$%^&*]/.test(form.new_password)) {
-      toast.error("Must contain 1 special character");
-      return false;
-    }
-
     return true;
   };
 
@@ -132,8 +122,6 @@ export default function ChangePasswordPage() {
           {/* RULES */}
           <div className="text-xs text-gray-500 space-y-1">
             <p>• Minimum 8 characters</p>
-            <p>• 1 uppercase letter</p>
-            <p>• 1 special character</p>
           </div>
 
           <Button

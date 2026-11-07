@@ -17,7 +17,8 @@ export type AppRoleKey =
   | "front-officer"
   | "back-officer"
   | "feedback"
-  | "customer";
+  | "customer"
+  | "agent";
 
 export type DashboardDefinition = {
   key: AppRoleKey;
@@ -36,6 +37,7 @@ export const roleHome: Record<AppRoleKey, string> = {
   "back-officer": "/dashboard",
   feedback: "/dashboard/feedback",
   customer: "/dashboard",
+  agent: "/dashboard/agent",
 };
 
 export const dashboardConfig: Record<AppRoleKey, DashboardDefinition> = {
@@ -79,6 +81,14 @@ export const dashboardConfig: Record<AppRoleKey, DashboardDefinition> = {
     route: roleHome["back-officer"],
     icon: FileCheck2,
   },
+  agent: {
+    key: "agent",
+    roleName: "Agent",
+    title: "Agent Dashboard",
+    subtitle: "Verify customer tickets and process applications for assigned windows.",
+    route: roleHome.agent,
+    icon: UserCheck,
+  },
   customer: {
     key: "customer",
     roleName: "Customer",
@@ -110,6 +120,7 @@ export function normalizeRole(role?: string | null): AppRoleKey {
     back_officer: "back-officer",
     feedback: "feedback",
     customer: "customer",
+    agent: "agent",
   };
 
   return map[normalized] ?? "super-admin";

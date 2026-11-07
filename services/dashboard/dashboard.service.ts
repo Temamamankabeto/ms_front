@@ -65,7 +65,7 @@ export type DashboardResponse = {
 
 export const dashboardService = {
   async getOverview(): Promise<DashboardResponse> {
-    const response = await api.get("/admin/dashboard");
+    const response = await api.get("/dashboard");
     const body = unwrap<{ data: DashboardResponse }>(response);
     return body.data;
   },

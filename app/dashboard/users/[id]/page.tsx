@@ -22,13 +22,7 @@ import {
 import { useUpdateUser } from "@/hooks/user/useUsers";
 
 /* ================= PASSWORD VALIDATION ================= */
-const validatePassword = (password: string) => {
-  const minLength = password.length >= 8;
-  const hasUpper = /[A-Z]/.test(password);
-  const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-
-  return minLength && hasUpper && hasSpecial;
-};
+const validatePassword = (password: string) => password.length >= 8;
 
 export default function UserDetailsPage() {
   const { id } = useParams();
@@ -61,7 +55,7 @@ export default function UserDetailsPage() {
     }
 
     if (!validatePassword(password)) {
-      alert("Password must be 8 chars, 1 uppercase, 1 special character");
+      alert("Password must be at least 8 characters");
       return;
     }
 
@@ -217,8 +211,6 @@ export default function UserDetailsPage() {
             {/* PASSWORD RULES */}
             <div className="text-xs text-gray-500 space-y-1">
               <p>• Minimum 8 characters</p>
-              <p>• At least 1 uppercase letter</p>
-              <p>• At least 1 special character</p>
             </div>
 
             {/* ACTIONS */}

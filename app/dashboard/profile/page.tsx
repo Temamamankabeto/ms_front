@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import type { ComponentType, FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -21,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authService, type AuthUser } from "@/services/auth/auth.service";
+import { resolveProfileImageUrl } from "@/lib/profile-image-url";
 
 type ProfileUser = AuthUser & {
   role?: string | null;
@@ -98,9 +98,15 @@ export default function ProfilePage() {
   const [newPasswordConfirmation, setNewPasswordConfirmation] = useState("");
 
   const imagePreview = useMemo(() => {
-    if (!image) return user?.profile_image_url || user?.photo_url || null;
+    if (!image) return resolveProfileImageUrl(user?.profile_image_url || user?.photo_url || user?.profile_image);
     return URL.createObjectURL(image);
-  }, [image, user?.profile_image_url, user?.photo_url]);
+  }, [image, user?.profile_image_url, user?.photo_url, user?.profile_image]);
+
+  useEffect(() => {
+    if (image && imagePreview?.startsWith("blob:")) {
+      return () => URL.revokeObjectURL(imagePreview);
+    }
+  }, [image, imagePreview]);
 
   function fillForm(data: AuthUser | ProfileUser | null) {
     if (!data) return;
@@ -214,9 +220,6 @@ export default function ProfilePage() {
                   <AvatarFallback className="text-2xl">{initials(user?.name)}</AvatarFallback>
                 </Avatar>
 
-                {imagePreview && (
-                  <Image src={imagePreview} alt="" width={1} height={1} className="hidden" unoptimized />
-                )}
               </div>
 
               <div>

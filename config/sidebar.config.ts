@@ -104,6 +104,7 @@ const windowManagementMenu: SidebarItem = {
     { label: "Service Windows", href: "/dashboard/service-window", permission: "windows.read", scopes: cityOnly },
     { label: "Assigned Window", href: "/dashboard/service-window/lists", permission: "windows.read", scopes: cityOnly },
     { label: "Officer Window", href: "/dashboard/window-officer-assignment", permission: "windows.read", scopes: cityOnly },
+    { label: "Agent Window Assignment", href: "/dashboard/agent-window-assignment", permission: "windows.read", scopes: ["super_admin"] },
   ],
 };
 
@@ -216,12 +217,20 @@ const managerSections = (role: AppRoleKey): SidebarSection[] => [
 
 const officerSections = (role: AppRoleKey): SidebarSection[] => [
   s("Main", [dashboardItem(role)]),
+  ...(role === "front-officer" ? [s("Ticket Management", [{ label: "Ticket Calling", href: "/dashboard/officer/ticket-calling", icon: ClipboardList }])] : []),
   s("Applications", [officerApplicationMenu]),
 ];
 
 const customerSections = (role: AppRoleKey): SidebarSection[] => [
   s("Main", [dashboardItem(role)]),
   s("Applications", [customerApplicationMenu]),
+];
+
+const agentSections = (role: AppRoleKey): SidebarSection[] => [
+  s("Main", [dashboardItem(role)]),
+  s("Customer Services", [
+    { label: "Incoming Tickets", href: "/dashboard/agent/incoming-tickets", icon: ClipboardList },
+  ]),
 ];
 
 const feedbackSections = (role: AppRoleKey): SidebarSection[] => [
@@ -236,6 +245,7 @@ export const sidebarConfig: Record<AppRoleKey, RoleSidebar> = {
   "front-officer": { title: "Front Officer", icon: UserCheck, sections: officerSections("front-officer") },
   "back-officer": { title: "Back Officer", icon: UserCheck, sections: officerSections("back-officer") },
   feedback: { title: "Feedback Officer", icon: BarChart3, sections: feedbackSections("feedback") },
+  agent: { title: "Agent", icon: UserCheck, sections: agentSections("agent") },
   customer: { title: "Customer", icon: UserCheck, sections: customerSections("customer") },
 };
 

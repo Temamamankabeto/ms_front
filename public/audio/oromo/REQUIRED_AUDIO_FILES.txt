@@ -1,0 +1,19 @@
+MESOB Public Queue Display - Recorded Afaan Oromoo assets
+
+The uploaded MESOB frontend/backend ZIPs do not include the original QMS recordings.
+Copy the existing original QMS audio files (do not rename) into:
+  frontend/public/sounds/ding.wav
+  frontend/public/audio/oromo/ticket_number.mp3
+  frontend/public/audio/oromo/please_go_to_counter.mp3
+  frontend/public/audio/oromo/go.mp3
+  frontend/public/audio/oromo/digits/0.mp3 through 9.mp3
+  frontend/public/audio/oromo/digits/TT.mp3
+  frontend/public/audio/oromo/counter/0.mp3 through 9.mp3
+
+The page intentionally reports missing audio instead of pretending to announce.
+The current implementation speaks the numeric window ID. If the desired spoken
+counter number is an officer code instead, the API/audio mapping must be extended
+based on the actual officer-code assignment data and recording convention.
+
+Open /ticket and pin the office in the SAME browser/TV, then open
+/public/queue-display and enable sound using the speaker button.

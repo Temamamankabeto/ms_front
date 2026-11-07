@@ -6,6 +6,7 @@ export type AppRoleName =
   | "admin"
   | "back_officer"
   | "front_officer"
+  | "agent"
   | "feedback"
   | "customer";
 
@@ -27,6 +28,7 @@ export const ROLE_OPTIONS: RoleOption[] = [
   { name: "admin", label: "Admin", isScoped: true },
   { name: "back_officer", label: "Back Officer", isScoped: true },
   { name: "front_officer", label: "Front Officer", isScoped: true },
+  { name: "agent", label: "Agent", isScoped: true },
   { name: "feedback", label: "Feedback Officer", isScoped: true },
   { name: "customer", label: "Customer", isScoped: false },
 ];
@@ -72,6 +74,8 @@ export function normalizeRoleName(role?: string | null): AppRoleName {
     value === "subcity_front_officer" ||
     value === "woreda_front_officer"
   ) return "front_officer";
+
+  if (value === "agent") return "agent";
 
   if (value === "customer") return "customer";
 

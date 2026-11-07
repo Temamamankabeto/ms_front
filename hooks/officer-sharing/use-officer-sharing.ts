@@ -4,18 +4,19 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { officerSharingService } from "@/services/officer-sharing/officer-sharing.service";
 
-export function useOfficerSharingWindows() {
+export function useOfficerSharingWindows(params?: { service_id?: number; level?: string } | false) {
   return useQuery({
-    queryKey: ["officer-sharing-windows"],
-    queryFn: officerSharingService.windows,
+    queryKey: ["officer-sharing-windows", params],
+    queryFn: () => officerSharingService.windows(params || undefined),
+    enabled: params !== false,
   });
 }
 
-export function useOfficerSharingOfficers(windowId?: number) {
+export function useOfficerSharingOfficers(windowId?: number, enabled = true) {
   return useQuery({
     queryKey: ["officer-sharing-officers", windowId],
     queryFn: () => officerSharingService.officers(Number(windowId)),
-    enabled: Boolean(windowId),
+    enabled: enabled && Boolean(windowId),
   });
 }
 

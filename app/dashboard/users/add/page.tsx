@@ -26,6 +26,7 @@ type Form = {
   name: string;
   email: string;
   phone: string;
+  officer_code: string;
   password: string;
   confirm_password: string;
   date_of_birth: string;
@@ -42,6 +43,7 @@ const initialForm: Form = {
   name: "",
   email: "",
   phone: "",
+  officer_code: "",
   password: "",
   confirm_password: "",
   date_of_birth: "",
@@ -59,6 +61,56 @@ function userLevel(user: any): LocationLevel {
   if (user?.subcity_id) return "subcity";
   if (user?.city_id) return "city";
   return "";
+}
+
+type ValidationErrors = Record<string, string[]>;
+
+function friendlyValidationMessage(field: string, message: string): string {
+  const text = message.toLowerCase();
+  if (field === "password" && (text.includes("data leak") || text.includes("compromised") || text.includes("pwned"))) {
+    return "This password is not secure. Choose a different password.";
+  }
+  if (text.includes("already been taken") || text.includes("already registered")) {
+    if (field === "email") return "This email is already registered.";
+    if (field === "phone") return "This phone number is already registered.";
+    if (field === "officer_code") return "This officer code is already in use.";
+  }
+  if (field === "phone" && (text.includes("invalid") || text.includes("format"))) {
+    return "Enter a valid phone number.";
+  }
+  if (text.includes("required")) {
+    const label = field.replace(/_/g, " ");
+    return `Please enter or select ${label}.`;
+  }
+  if (field === "password" && text.includes("at least")) return "Password must be at least 8 characters.";
+  return message;
+}
+
+function parseApiError(error: unknown): { message: string; fields: ValidationErrors } {
+  const err = error as {
+    response?: { data?: unknown };
+    data?: unknown;
+    message?: string;
+  } | null;
+  const raw = err?.response?.data ?? err?.data;
+  const payload = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const nested = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : {};
+  const rawErrors = payload.errors ?? nested.errors;
+  const fields: ValidationErrors = {};
+  if (rawErrors && typeof rawErrors === "object" && !Array.isArray(rawErrors)) {
+    for (const [field, value] of Object.entries(rawErrors)) {
+      const messages = (Array.isArray(value) ? value : [value])
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => friendlyValidationMessage(field, item));
+      if (messages.length) fields[field] = messages;
+    }
+  }
+  const rawMessage = typeof payload.message === "string" ? payload.message : err?.message;
+  const generic = !rawMessage || /^(validation failed\.?|unprocessable entity|request failed with status code 422)$/i.test(rawMessage.trim());
+  const message = Object.keys(fields).length
+    ? "Please correct the highlighted fields."
+    : generic ? "Unable to save user. Please check the form and try again." : rawMessage;
+  return { message, fields };
 }
 
 export default function AddUserPage() {
@@ -86,12 +138,33 @@ export default function AddUserPage() {
     location_level: authLevel || "",
   });
 
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [submitError, setSubmitError] = useState("");
+
+  function clearError(field: string) {
+    setValidationErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+    setSubmitError("");
+  }
+
+  function fieldError(field: string) {
+    return validationErrors[field]?.length ? (
+      <p role="alert" className="mt-1 text-sm text-destructive">{validationErrors[field].join(" ")}</p>
+    ) : null;
+  }
+
   const selectedRole = useMemo(() => getRoleOption(form.role), [form.role]);
 
   const roleOptions = useMemo(() => {
     const base = roles || [];
 
-    if (authRole === "super_admin") return base;
+    if (authRole === "super_admin") {
+      return base;
+    }
     if (authRole !== "admin") return [];
 
     if (authLevel === "city") {
@@ -127,6 +200,7 @@ export default function AddUserPage() {
     if (!form.name.trim()) return toast.error("Name is required"), false;
     if (!form.email.trim()) return toast.error("Email is required"), false;
     if (!form.phone.trim()) return toast.error("Phone is required"), false;
+    if (form.officer_code.trim().length > 10) return toast.error("Officer Code must be 10 characters or fewer"), false;
     if (!form.role) return toast.error("Role is required"), false;
     if (selectedRole.isScoped && !form.location_level) return toast.error("Location level is required"), false;
     if (requiresCity && !form.city_id) return toast.error("City is required"), false;
@@ -138,6 +212,8 @@ export default function AddUserPage() {
   }
 
   function handleSubmit() {
+    setValidationErrors({});
+    setSubmitError("");
     if (!validate()) return;
 
     createUser.mutate(
@@ -145,6 +221,7 @@ export default function AddUserPage() {
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
+        officer_code: form.officer_code.trim() || undefined,
         password: form.password,
         date_of_birth: form.date_of_birth || undefined,
         address: form.address || undefined,
@@ -162,13 +239,10 @@ export default function AddUserPage() {
           router.push("/dashboard/users");
         },
         onError: (error: any) => {
-          const errors = error?.response?.data?.errors;
-          if (errors) {
-            const first = Object.values(errors)?.[0] as any;
-            toast.error(Array.isArray(first) ? first[0] : "Validation failed.");
-            return;
-          }
-          toast.error(error?.response?.data?.message || error?.message || "Failed to create user");
+          const result = parseApiError(error);
+          setValidationErrors(result.fields);
+          setSubmitError(result.message);
+          if (!Object.keys(result.fields).length) toast.error(result.message);
         },
       }
     );
@@ -185,23 +259,56 @@ export default function AddUserPage() {
         </CardHeader>
 
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Input placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <Input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          {submitError && <div role="alert" aria-live="assertive" className="col-span-full rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"><strong>Unable to create user:</strong> {submitError}</div>}
+          <div className="min-w-0" onChangeCapture={() => clearError("name")}>
+<Input placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+{fieldError("name")}
+</div>
+          <div className="min-w-0" onChangeCapture={() => clearError("email")}>
+<Input placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+{fieldError("email")}
+</div>
+          <div className="min-w-0" onChangeCapture={() => clearError("phone")}>
+<Input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+{fieldError("phone")}
+</div>
+          <div className="space-y-1">
+            <label htmlFor="officer-code" className="text-sm font-medium">Officer Code (optional)</label>
+            <div className="min-w-0" onChangeCapture={() => clearError("officer_code")}>
+<Input id="officer-code" placeholder="e.g. OFF-001" maxLength={10} value={form.officer_code} onChange={(e) => setForm({ ...form, officer_code: e.target.value })} />
+{fieldError("officer_code")}
+</div>
+          </div>
 
-          <select className="rounded-md border p-2" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value as any })}>
+          <div className="min-w-0" onChangeCapture={() => clearError("gender")}>
+<select className="rounded-md border p-2" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value as any })}>
             <option value="">Gender</option>
             <option value="male">Male</option>
             <option value="female">Female</option>
             <option value="other">Other</option>
           </select>
+{fieldError("gender")}
+</div>
 
-          <Input type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-          <Input type="password" placeholder="Confirm Password" value={form.confirm_password} onChange={(e) => setForm({ ...form, confirm_password: e.target.value })} />
-          <Input type="date" value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} />
-          <Input placeholder="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          <div className="min-w-0" onChangeCapture={() => clearError("password")}>
+<Input type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+{fieldError("password")}
+</div>
+          <div className="min-w-0" onChangeCapture={() => clearError("confirm_password")}>
+<Input type="password" placeholder="Confirm Password" value={form.confirm_password} onChange={(e) => setForm({ ...form, confirm_password: e.target.value })} />
+{fieldError("confirm_password")}
+</div>
+          <div className="min-w-0" onChangeCapture={() => clearError("date_of_birth")}>
+<Input type="date" value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} />
+{fieldError("date_of_birth")}
+</div>
+          <div className="min-w-0" onChangeCapture={() => clearError("address")}>
+<Input placeholder="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+{fieldError("address")}
+</div>
 
-          <select
+          <div className="min-w-0" onChangeCapture={() => clearError("role")}>
+<select
             className="rounded-md border p-2"
             value={form.role}
             onChange={(event) => {
@@ -220,9 +327,12 @@ export default function AddUserPage() {
               </option>
             ))}
           </select>
+{fieldError("role")}
+</div>
 
           {selectedRole.isScoped && (
-            <select
+            <div className="min-w-0" onChangeCapture={() => clearError("location_level")}>
+<select
               className="rounded-md border p-2"
               value={form.location_level}
               onChange={(event) => {
@@ -243,10 +353,13 @@ export default function AddUserPage() {
                 </option>
               ))}
             </select>
+{fieldError("location_level")}
+</div>
           )}
 
           {requiresCity && (
-            <select
+            <div className="min-w-0" onChangeCapture={() => clearError("city_id")}>
+<select
               className="rounded-md border p-2"
               value={form.city_id}
               disabled={Boolean(authLevel)}
@@ -257,10 +370,13 @@ export default function AddUserPage() {
                 <option key={city.id} value={city.id}>{city.name}</option>
               ))}
             </select>
+{fieldError("city_id")}
+</div>
           )}
 
           {requiresSubcity && (
-            <select
+            <div className="min-w-0" onChangeCapture={() => clearError("subcity_id")}>
+<select
               className="rounded-md border p-2"
               value={form.subcity_id}
               disabled={authLevel === "subcity" || authLevel === "woreda"}
@@ -271,10 +387,13 @@ export default function AddUserPage() {
                 <option key={subcity.id} value={subcity.id}>{subcity.name}</option>
               ))}
             </select>
+{fieldError("subcity_id")}
+</div>
           )}
 
           {requiresWoreda && (
-            <select
+            <div className="min-w-0" onChangeCapture={() => clearError("woreda_id")}>
+<select
               className="rounded-md border p-2"
               value={form.woreda_id}
               disabled={authLevel === "woreda"}
@@ -285,6 +404,8 @@ export default function AddUserPage() {
                 <option key={woreda.id} value={woreda.id}>{woreda.name}</option>
               ))}
             </select>
+{fieldError("woreda_id")}
+</div>
           )}
         </CardContent>
 

@@ -39,8 +39,10 @@ function normalizeUserResponse(response: any): AuthUser {
 }
 
 function normalizeLoginResponse(response: unknown): LoginResponse {
-  const value = response as { data?: LoginResponse } | LoginResponse;
-  return "data" in value && value.data ? value.data : (value as LoginResponse);
+  const value = response as LoginResponse;
+  // Laravel returns access_token at the root and inside data. Keep both,
+  // including the top-level user/roles when supplied by an auth endpoint.
+  return value;
 }
 
 let currentUser: AuthUser | null = null;
@@ -89,9 +91,10 @@ export const authService = {
     try {
       const response = await api.get("/profile");
       return rememberUser(normalizeUserResponse(response));
-    } catch {
-      const response = await api.get("/auth/me");
-      return rememberUser(normalizeUserResponse(response));
+    } catch (error) {
+      // A 401 must end the authentication attempt, not trigger a second
+      // protected request while the session is being cleared.
+      throw error;
     }
   },
 

@@ -12,8 +12,34 @@ const API_BASE_URL =
   envApiUrl ||
   (envBackendUrl ? `${envBackendUrl.replace(/\/$/, "")}/api` : "/api");
 
+// Keep the access token for the lifetime of this browser tab, including reloads.
+// sessionStorage is tab-scoped; it is cleared when the tab session ends.
+const ACCESS_TOKEN_KEY = "mesob_access_token";
 let accessToken: string | null = null;
+
+function readStoredAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage.getItem(ACCESS_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistAccessToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) {
+      window.sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
+    } else {
+      window.sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+    }
+  } catch {
+    // Storage can be blocked; in-memory auth still works for this page.
+  }
+}
 let refreshPromise: Promise<string | null> | null = null;
+let loginRedirectStarted = false;
 
 type RetriableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
@@ -25,27 +51,32 @@ function isBrowser() {
 }
 
 export function getToken() {
+  // Rehydrate before the first authenticated request after a full page reload.
+  if (!accessToken) accessToken = readStoredAccessToken();
   return accessToken;
 }
 
 export function getAccessToken() {
-  return accessToken;
+  return getToken();
 }
 
 export function saveAccessToken(token: string | null) {
   accessToken = token;
+  persistAccessToken(token);
+  if (token) loginRedirectStarted = false;
 }
 
 export function setAccessToken(token: string | null) {
-  accessToken = token;
+  saveAccessToken(token);
 }
 
 export function saveSession(payload: { token?: string; access_token?: string } | null) {
-  accessToken = payload?.token ?? payload?.access_token ?? null;
+  saveAccessToken(payload?.token ?? payload?.access_token ?? null);
 }
 
 export function clearSession() {
   accessToken = null;
+  persistAccessToken(null);
 }
 
 export function unwrap<T = unknown>(response: AxiosResponse<T> | T): T {
@@ -175,8 +206,9 @@ api.interceptors.response.use(
     if (status === 401) {
       clearSession();
 
-      if (isBrowser() && !window.location.pathname.includes("/login")) {
-        window.location.href = "/login";
+      if (isBrowser() && !window.location.pathname.includes("/login") && !loginRedirectStarted) {
+        loginRedirectStarted = true;
+        window.location.replace("/login");
       }
     }
 

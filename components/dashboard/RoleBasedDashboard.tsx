@@ -161,10 +161,34 @@ export default function RoleBasedDashboard() {
   const reportingData = reportingQuery.data;
   const overviewData = overviewQuery.data;
 
-  if (reportingQuery.isLoading && overviewQuery.isLoading) {
+  // The role-scoped overview is the authoritative source for application counts.
+  // Reporting aggregates must not replace it (they may use a different scope).
+  if (overviewQuery.isPending) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
+      <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
         <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="sr-only">Loading dashboard statistics</span>
+      </div>
+    );
+  }
+
+  if (overviewData) {
+    return <RoleOverviewDashboard data={overviewData} />;
+  }
+
+  // Never present an empty dashboard as valid zero statistics after an API error.
+  // In particular, a 401/403 must not be hidden by reporting aggregates.
+  if (overviewQuery.isError) {
+    return (
+      <div className="rounded-2xl border border-destructive/30 bg-card p-6" role="alert">
+        <h2 className="font-semibold">Dashboard statistics unavailable</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The application dashboard could not be loaded. Your application records have not been changed.
+          Check your session and dashboard permissions, then try again.
+        </p>
+        <Button className="mt-4" variant="outline" onClick={() => void overviewQuery.refetch()}>
+          Retry dashboard
+        </Button>
       </div>
     );
   }
@@ -242,20 +266,9 @@ export default function RoleBasedDashboard() {
     );
   }
 
-  if (overviewData) {
-    return <RoleOverviewDashboard data={overviewData} />;
-  }
-
   return (
-    <RoleOverviewDashboard
-      data={{
-        profile: {
-          role: "officer",
-          role_label: "Officer Dashboard",
-          scope_label: "Application workspace",
-        },
-        status_counts: {},
-      }}
-    />
+    <div className="rounded-2xl border bg-card p-6" role="status">
+      Dashboard statistics are not available yet.
+    </div>
   );
 }

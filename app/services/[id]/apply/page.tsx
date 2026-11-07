@@ -1,6 +1,9 @@
 "use client";
 
-import { getToken } from "@/lib/api";
+import api, { getToken } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, MapPin } from "lucide-react";
@@ -58,6 +61,11 @@ export default function ApplyPage() {
   const searchParams = useSearchParams();
 
   const serviceId = Number(params.id);
+  const ticketNumber = searchParams.get("ticket_number")?.trim() || "";
+  const [isAgent, setIsAgent] = useState(false);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const queryClient = useQueryClient();
 
   const administrativeLevel =
     searchParams.get("administrative_level") || "";
@@ -85,18 +93,36 @@ export default function ApplyPage() {
   /**
    * FETCH FORM
    */
-  const { data, isLoading } =
-    useApplicationForm(serviceId) as {
+  const customerForm = useApplicationForm(isAgent ? 0 : serviceId);
+  const agentForm = useQuery({
+    queryKey: ["agent-application-form", serviceId, ticketNumber],
+    queryFn: async () => (await api.get(`/agent/services/${serviceId}/application-form`, { params: { ticket_number: ticketNumber } })).data,
+    enabled: isAgent && serviceId > 0 && !!ticketNumber,
+    retry: false,
+  });
+  const { data, isLoading } = (isAgent ? agentForm : customerForm) as {
       data?: ApplicationFormResponse;
       isLoading: boolean;
     };
 
   const applyMutation = useApplyService(serviceId);
+  const agentMutation = useMutation({
+    mutationFn: async (payload: FormData) =>
+      (await api.post(`/agent/services/${serviceId}/applications`, payload, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })).data,
+  });
 
   /**
    * FORM DATA
    */
-  const form = data?.data;
+  const agentResponse = data?.data as (ApplicationFormResponse["data"] & { form?: ApplicationFormResponse["data"]; ticket?: Record<string, unknown> }) | undefined;
+  const form = isAgent ? (agentResponse?.form ?? agentResponse) : data?.data;
+  const ticket = agentResponse?.ticket;
+  const effectiveLevel = isAgent ? String(ticket?.administrative_level ?? "") : administrativeLevel;
+  const effectiveCityId = isAgent ? Number(ticket?.city_id ?? 0) : cityId;
+  const effectiveSubcityId = isAgent ? (ticket?.subcity_id == null ? null : Number(ticket.subcity_id)) : subcityId;
+  const effectiveWoredaId = isAgent ? (ticket?.woreda_id == null ? null : Number(ticket.woreda_id)) : woredaId;
 
   const fields: ServiceFormField[] = form?.fields || [];
 
@@ -142,6 +168,11 @@ export default function ApplyPage() {
       return;
     }
 
+    if (role === "agent" && ticketNumber) {
+      setIsAgent(true);
+      return;
+    }
+
     if (role !== "customer") {
       toast.error(
         "Only customers can apply for public services."
@@ -153,20 +184,16 @@ export default function ApplyPage() {
         )}`
       );
     }
-  }, [router, currentPath]);
+  }, [router, currentPath, ticketNumber]);
 
   /**
    * VALID LOCATION
    */
   const hasValidSelection =
-    ["city", "subcity", "woreda"].includes(
-      administrativeLevel
-    ) &&
-    cityId > 0 &&
-    (administrativeLevel !== "subcity" ||
-      Boolean(subcityId)) &&
-    (administrativeLevel !== "woreda" ||
-      Boolean(subcityId && woredaId));
+    ["city", "subcity", "woreda"].includes(effectiveLevel) &&
+    effectiveCityId > 0 &&
+    (effectiveLevel !== "subcity" || Boolean(effectiveSubcityId)) &&
+    (effectiveLevel !== "woreda" || Boolean(effectiveSubcityId && effectiveWoredaId));
 
   /**
    * GROUP STEPS
@@ -344,7 +371,7 @@ export default function ApplyPage() {
         ""
     );
 
-    if (role !== "customer") {
+    if (role !== "customer" && !(role === "agent" && isAgent && ticketNumber)) {
       toast.error(
         "Only customers can apply for public services."
       );
@@ -363,7 +390,7 @@ export default function ApplyPage() {
         "Please select service location first."
       );
 
-      router.push("/services");
+      if (!isAgent) router.push("/services");
 
       return;
     }
@@ -373,6 +400,31 @@ export default function ApplyPage() {
     }
 
     try {
+      if (isAgent) {
+        if (!customerName.trim() || !/^\+?[0-9]{9,15}$/.test(customerPhone.trim())) {
+          toast.error("Enter the customer's full name and valid phone number.");
+          return;
+        }
+        const payload = new FormData();
+        payload.append("ticket_number", ticketNumber);
+        payload.append("customer_name", customerName.trim());
+        payload.append("customer_phone", customerPhone.trim());
+        payload.append("administrative_level", effectiveLevel);
+        payload.append("city_id", String(effectiveCityId));
+        if (effectiveSubcityId != null) payload.append("subcity_id", String(effectiveSubcityId));
+        if (effectiveWoredaId != null) payload.append("woreda_id", String(effectiveWoredaId));
+        Object.entries(formValues).forEach(([key, value]) => {
+          if (value == null) return;
+          if (Array.isArray(value)) value.forEach(item => payload.append(`data[${key}][]`, String(item)));
+          else payload.append(`data[${key}]`, String(value));
+        });
+        Object.entries(files).forEach(([key, file]) => { if (file) payload.append(`files[${key}]`, file); });
+        await agentMutation.mutateAsync(payload);
+        await queryClient.invalidateQueries({ queryKey: ["agent-incoming-tickets"] });
+        toast.success("Application submitted successfully");
+        router.push("/dashboard/agent/incoming-tickets");
+        return;
+      }
       const response =
         (await applyMutation.mutateAsync({
           values: formValues,
@@ -399,17 +451,18 @@ export default function ApplyPage() {
           : "/my-applications"
       );
     } catch (error: any) {
-      toast.error(
-        error?.message ||
-          "Submission failed"
-      );
+      toast.error(error?.response?.data?.message || error?.message || "Submission failed");
     }
   }
 
   /**
    * NO LOCATION
    */
-  if (!hasValidSelection) {
+  if (!isLoading && isAgent && agentForm.isError) {
+    return <div className="mx-auto max-w-2xl p-6" role="alert"><Card><CardContent className="space-y-4 p-6"><p className="text-destructive">{(agentForm.error as { response?: { data?: { message?: string } } })?.response?.data?.message || "Unable to authorize this ticket."}</p><Button variant="outline" onClick={() => router.push("/dashboard/agent/incoming-tickets")}>Back to Incoming Tickets</Button></CardContent></Card></div>;
+  }
+
+  if (!isLoading && !hasValidSelection) {
     return (
       <div className="mx-auto max-w-2xl p-6">
         <Card className="rounded-3xl">
@@ -429,7 +482,7 @@ export default function ApplyPage() {
 
             <Button
               onClick={() =>
-                router.push("/services")
+                router.push(isAgent ? "/dashboard/agent/incoming-tickets" : "/services")
               }
             >
               Choose Service
@@ -490,10 +543,10 @@ export default function ApplyPage() {
               variant="outline"
               size="sm"
               onClick={() =>
-                router.push("/services")
+                router.push(isAgent ? "/dashboard/agent/incoming-tickets" : "/services")
               }
             >
-              Change Location
+              {isAgent ? "Back to Tickets" : "Change Location"}
             </Button>
           </CardContent>
         </Card>
@@ -529,6 +582,14 @@ export default function ApplyPage() {
               onSubmit={submit}
               className="space-y-8"
             >
+              {isAgent && <section className="rounded-2xl border bg-muted/20 p-6" aria-label="Customer information">
+                <h2 className="mb-4 text-xl font-semibold">Customer Information</h2>
+                <p className="mb-4 text-sm text-muted-foreground">QMS Ticket: <strong>{ticketNumber}</strong></p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2"><Label htmlFor="agent-customer-name">Customer Full Name *</Label><Input id="agent-customer-name" autoComplete="name" required maxLength={255} value={customerName} onChange={e => setCustomerName(e.target.value)} /></div>
+                  <div className="space-y-2"><Label htmlFor="agent-customer-phone">Customer Phone Number *</Label><Input id="agent-customer-phone" type="tel" autoComplete="tel" required pattern="\+?[0-9]{9,15}" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} /></div>
+                </div>
+              </section>}
               <div className="rounded-2xl border bg-muted/20 p-6">
                 <h2 className="mb-6 text-xl font-semibold">
                   {current?.title ||
@@ -617,11 +678,11 @@ export default function ApplyPage() {
                   <Button
                     type="submit"
                     disabled={
-                      applyMutation.isPending
+                      applyMutation.isPending || agentMutation.isPending
                     }
                     className="rounded-2xl"
                   >
-                    {applyMutation.isPending
+                    {applyMutation.isPending || agentMutation.isPending
                       ? "Submitting..."
                       : "Submit Application"}
                   </Button>

@@ -22,6 +22,7 @@ import {
 
 import ApplicationStatusBadge from "@/components/application/ApplicationStatusBadge";
 import RoleBasedDashboard from "@/components/dashboard/RoleBasedDashboard";
+import AgentWorkspace from "@/components/agent/AgentWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -97,6 +98,10 @@ export default function DashboardPage() {
       ""
   ).toLowerCase();
   const isCustomer = role.includes("customer");
+
+  if (role === "agent") {
+    return <AgentWorkspace />;
+  }
 
   if (!isCustomer) {
     return <RoleBasedDashboard />;

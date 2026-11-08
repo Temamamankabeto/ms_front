@@ -29,8 +29,8 @@ type Form = {
   officer_code: string;
   password: string;
   confirm_password: string;
-  date_of_birth: string;
-  address: string;
+
+
   gender: "male" | "female" | "other" | "";
   role: string;
   location_level: LocationLevel;
@@ -46,8 +46,8 @@ const initialForm: Form = {
   officer_code: "",
   password: "",
   confirm_password: "",
-  date_of_birth: "",
-  address: "",
+
+
   gender: "",
   role: "",
   location_level: "",
@@ -223,8 +223,8 @@ export default function AddUserPage() {
         phone: form.phone.trim(),
         officer_code: form.officer_code.trim() || undefined,
         password: form.password,
-        date_of_birth: form.date_of_birth || undefined,
-        address: form.address || undefined,
+
+
         gender: form.gender || undefined,
         role: form.role,
         location_level: selectedRole.isScoped ? form.location_level : undefined,
@@ -297,14 +297,6 @@ export default function AddUserPage() {
           <div className="min-w-0" onChangeCapture={() => clearError("confirm_password")}>
 <Input type="password" placeholder="Confirm Password" value={form.confirm_password} onChange={(e) => setForm({ ...form, confirm_password: e.target.value })} />
 {fieldError("confirm_password")}
-</div>
-          <div className="min-w-0" onChangeCapture={() => clearError("date_of_birth")}>
-<Input type="date" value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} />
-{fieldError("date_of_birth")}
-</div>
-          <div className="min-w-0" onChangeCapture={() => clearError("address")}>
-<Input placeholder="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-{fieldError("address")}
 </div>
 
           <div className="min-w-0" onChangeCapture={() => clearError("role")}>

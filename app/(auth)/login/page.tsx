@@ -20,6 +20,7 @@ import { normalizeRoleName } from "@/config/roles.config";
 import { getDashboardForRole } from "@/config/dashboard.config";
 
 import mesob from "@/app/mesob.jpg";
+import { QrCameraLogin } from "@/components/auth/qr-camera-login";
 
 type RoleValue = string | { name?: string };
 
@@ -66,6 +67,7 @@ function LoginContent() {
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
   const [faydaLoading, setFaydaLoading] =
     useState(false);
 
@@ -100,6 +102,21 @@ function LoginContent() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onQrScan(credential: string) {
+    setQrLoading(true);
+    try {
+      const response = await authService.qrLogin(credential);
+      const user = response.user ?? (await authService.me());
+      const role = getUserRole(user);
+      toast.success("Logged in with QR code");
+      router.replace(resolvePostLoginDestination(role, searchParams.get("redirect")));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "QR login failed");
+    } finally {
+      setQrLoading(false);
     }
   }
 
@@ -190,6 +207,8 @@ function LoginContent() {
                 Fayda National ID
               </p>
             </div>
+
+            <div className="mb-6"><QrCameraLogin onScan={onQrScan} busy={qrLoading} /></div>
 
             {/* Fayda Login */}
             <Button

@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { UserQrCard } from "@/components/user-management/user-qr-card";
 import { useState } from "react";
 
 import {
@@ -73,6 +74,8 @@ export default function UserDetailsPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
+
+      <UserQrCard userId={user.id} name={user.name ?? "MESOB user"} />
 
       {/* HEADER CARD */}
       <Card className="shadow-lg border-0">

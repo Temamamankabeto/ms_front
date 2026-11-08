@@ -18,6 +18,8 @@ import {
   normalizeRoleName,
   roleLabel,
   locationLevelLabel,
+  ROLE_OPTIONS,
+  LOCATION_LEVELS,
 } from "@/config/roles.config";
 
 import { authService } from "@/services/auth/auth.service";
@@ -157,6 +159,7 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [role, setRole] = useState("");
+  const [locationLevel, setLocationLevel] = useState("");
   const [cityId, setCityId] = useState("");
   const [subcityId, setSubcityId] = useState("");
   const [woredaId, setWoredaId] = useState("");
@@ -180,6 +183,7 @@ export default function UsersPage() {
     search,
     status,
     role,
+    location_level: locationLevel,
     city_id: cityId,
     subcity_id: subcityId,
     woreda_id: woredaId,
@@ -202,6 +206,7 @@ export default function UsersPage() {
     setSearch("");
     setStatus("");
     setRole("");
+    setLocationLevel("");
     setCityId("");
     setSubcityId("");
     setWoredaId("");
@@ -228,7 +233,7 @@ export default function UsersPage() {
         </CardHeader>
 
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
@@ -261,11 +266,25 @@ export default function UsersPage() {
               <SelectTrigger><SelectValue placeholder="Role" /></SelectTrigger>
               <SelectContent className="z-[9999]">
                 <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="super_admin">Super Admin</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="back_officer">Back Officer</SelectItem>
-                <SelectItem value="front_officer">Front Officer</SelectItem>
-                <SelectItem value="citizen">Citizen</SelectItem>
+                {ROLE_OPTIONS.filter((option) => option.name !== "customer").map((option) => (
+                  <SelectItem key={option.name} value={option.name}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={locationLevel || "all"} onValueChange={(value) => {
+              setLocationLevel(value === "all" ? "" : value);
+              setPage(1);
+            }}>
+              <SelectTrigger aria-label="Filter by user level"><SelectValue placeholder="Level" /></SelectTrigger>
+              <SelectContent className="z-[9999]">
+                <SelectItem value="all">All Levels</SelectItem>
+                {LOCATION_LEVELS.map((level) => (
+                  <SelectItem key={level.value} value={level.value}>{level.label}</SelectItem>
+                ))}
+                <SelectItem value="system">System / Unassigned</SelectItem>
               </SelectContent>
             </Select>
 

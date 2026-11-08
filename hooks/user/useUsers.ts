@@ -23,6 +23,7 @@ export type UserFilters = {
   status?: string;
 
   role?: string;
+  location_level?: string;
 
   city_id?: string | number;
 
@@ -49,6 +50,7 @@ export const useUsers = (
     status = "",
 
     role = "",
+    location_level = "",
 
     city_id = "",
 
@@ -69,6 +71,7 @@ export const useUsers = (
       status,
 
       role,
+      location_level,
 
       city_id,
 
@@ -94,6 +97,7 @@ export const useUsers = (
           status,
 
           role,
+          location_level,
 
           city_id,
 

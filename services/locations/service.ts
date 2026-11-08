@@ -1,10 +1,10 @@
-import api from "@/lib/api";
+﻿import api from "@/lib/api";
 
 // ================= CITIES =================
 export const getCities = async (
   page = 1
 ) => {
-  return api.get(`/cities?page=${page}`);
+  return api.get(`/admin/cities?page=${page}`);
 };
 export const createCity = async (data: any) => {
   const res = await api.post(`/admin/cities`, data);

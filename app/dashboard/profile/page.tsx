@@ -35,6 +35,7 @@ type ProfileUser = AuthUser & {
   date_of_birth?: string | null;
   address?: string | null;
   phone?: string | null;
+  officer_code?: string | null;
   profile_image_url?: string | null;
   photo_url?: string | null;
 };
@@ -88,6 +89,7 @@ export default function ProfilePage() {
   const [savingPassword, setSavingPassword] = useState(false);
 
   const [name, setName] = useState("");
+  const [officerCode, setOfficerCode] = useState("");
   const [gender, setGender] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [address, setAddress] = useState("");
@@ -115,6 +117,7 @@ export default function ProfilePage() {
 
     setUser(profile);
     setName(profile.name || "");
+    setOfficerCode(profile.officer_code || "");
     setGender(profile.gender || "");
     setDateOfBirth(profile.date_of_birth ? String(profile.date_of_birth).slice(0, 10) : "");
     setAddress(profile.address || "");
@@ -143,6 +146,13 @@ export default function ProfilePage() {
     loadProfile();
   }, []);
 
+  const isOfficer = useMemo(() => {
+    const assignedRoles = (user?.roles ?? []) as Array<string | { name?: string | null }>;
+    const roleNames = assignedRoles.map((role) => typeof role === "string" ? role : role.name || "");
+    if (user?.role) roleNames.push(user.role);
+    return roleNames.some((role) => ["front_officer", "back_officer", "agent", "feedback"].includes(role.toLowerCase()));
+  }, [user]);
+
   async function submitProfile(event: FormEvent) {
     event.preventDefault();
     setSavingProfile(true);
@@ -150,6 +160,7 @@ export default function ProfilePage() {
     try {
       const payload = new FormData();
       payload.append("name", name);
+      if (isOfficer) payload.append("officer_code", officerCode.trim());
       if (gender) payload.append("gender", gender);
       if (dateOfBirth) payload.append("date_of_birth", dateOfBirth);
       payload.append("address", address || "");
@@ -258,6 +269,21 @@ export default function ProfilePage() {
                   <Input value={name} onChange={(event) => setName(event.target.value)} required />
                 </div>
 
+                {isOfficer && (
+                  <div className="space-y-2">
+                    <Label htmlFor="officer-code">Officer Code</Label>
+                    <Input
+                      id="officer-code"
+                      value={officerCode}
+                      onChange={(event) => setOfficerCode(event.target.value)}
+                      maxLength={10}
+                      required
+                      autoComplete="off"
+                      aria-describedby="officer-code-help"
+                    />
+                    <p id="officer-code-help" className="text-xs text-muted-foreground">Unique code, maximum 10 characters.</p>
+                  </div>
+                )}
                 <ReadOnlyField icon={Mail} label="Email" value={user?.email || "-"} />
                 <ReadOnlyField icon={Phone} label="Phone" value={user?.phone || "-"} />
                 <ReadOnlyField icon={MapPin} label="Location" value={locationText(user)} />

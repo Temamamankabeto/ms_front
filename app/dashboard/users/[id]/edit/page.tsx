@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { useUsers, useUpdateUser } from "@/hooks/user/useUsers";
-import { useCities } from "@/hooks/location/useCities";
-import { useSubcities } from "@/hooks/location/useSubcities";
-import { useWoredas } from "@/hooks/location/useWoredas";
+import { useUser, useUpdateUser } from "@/hooks/user/useUsers";
+import { getCities, getSubcities, getWoredas } from "@/services/locations/service";
 import { useRoles } from "@/hooks/roles/useRoles";
 import {
   getRoleOption,
@@ -28,8 +27,8 @@ type Form = {
   officer_code: string;
   password: string;
   confirm_password: string;
-  date_of_birth: string;
-  address: string;
+
+
   gender: "male" | "female" | "other" | "";
   role: string;
   location_level: LocationLevel;
@@ -88,39 +87,58 @@ function parseApiError(error: unknown): { message: string; fields: ValidationErr
   return { message, fields };
 }
 
+type LocationRecord = { id: number | string; name: string; city_id?: number | string; subcity_id?: number | string };
+
+function unpackLocationResponse(response: unknown): { items: LocationRecord[]; lastPage: number } {
+  // Axios response -> application envelope -> optional Laravel paginator.
+  const axiosBody = (response as { data?: unknown })?.data ?? response;
+  const envelope = axiosBody as { data?: unknown; meta?: { last_page?: number }; last_page?: number };
+  const content = envelope?.data ?? envelope;
+  const paginator = content as { data?: unknown; meta?: { last_page?: number }; last_page?: number };
+  const items = Array.isArray(content) ? content : Array.isArray(paginator?.data) ? paginator.data : [];
+  const lastPage = Number(paginator?.last_page ?? paginator?.meta?.last_page ?? envelope?.meta?.last_page ?? 1);
+  return { items: items as LocationRecord[], lastPage: Number.isFinite(lastPage) ? lastPage : 1 };
+}
+
+async function fetchLocationPages(fetchPage: (page: number) => Promise<unknown>): Promise<LocationRecord[]> {
+  const first = unpackLocationResponse(await fetchPage(1));
+  if (first.lastPage > 100) throw new Error("Location list exceeds the supported page limit.");
+  const all = [...first.items];
+  for (let page = 2; page <= first.lastPage; page += 1) {
+    all.push(...unpackLocationResponse(await fetchPage(page)).items);
+  }
+  return Array.from(new Map(all.map((item) => [String(item.id), item])).values());
+}
+
 export default function EditUserPage() {
   const { id } = useParams();
   const router = useRouter();
 
-const { data } = useUsers({
-  page: 1,
-});
+const userId = Array.isArray(id) ? id[0] : id;
+  const { data: userResponse, isLoading: loadingUser, isError: userLoadError } = useUser(userId);
   const updateUser = useUpdateUser();
+  // Fetch the requested user directly; the first page of the users list is not reliable.
+  const user = userResponse?.data ?? null;
 
-  const users = data?.data || [];
-  const user = users.find((item: any) => item.id == id);
-
-  const { data: citiesData } = useCities(1);
-  const { data: subcitiesData } = useSubcities(1);
-  const { data: woredasData } = useWoredas(1);
   const { roles } = useRoles();
-const cities = Array.isArray(citiesData?.data)
-  ? citiesData.data
-  : Array.isArray(citiesData)
-  ? citiesData
-  : [];
 
-const subcities = Array.isArray(subcitiesData?.data)
-  ? subcitiesData.data
-  : Array.isArray(subcitiesData)
-  ? subcitiesData
-  : [];
-
-const woredas = Array.isArray(woredasData?.data)
-  ? woredasData.data
-  : Array.isArray(woredasData)
-  ? woredasData
-  : [];
+  // The location endpoints are paginated. Fetch all available pages rather
+  // than limiting the edit form to page 1 (which can omit assigned locations).
+  const { data: cities = [], isLoading: loadingCities, isError: citiesError } = useQuery({
+    queryKey: ["user-edit-location-cities"],
+    queryFn: () => fetchLocationPages(getCities),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: subcities = [], isLoading: loadingSubcities, isError: subcitiesError } = useQuery({
+    queryKey: ["user-edit-location-subcities"],
+    queryFn: () => fetchLocationPages(getSubcities),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: woredas = [], isLoading: loadingWoredas, isError: woredasError } = useQuery({
+    queryKey: ["user-edit-location-woredas"],
+    queryFn: () => fetchLocationPages(getWoredas),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const [form, setForm] = useState<Form>({
     name: "",
@@ -129,8 +147,8 @@ const woredas = Array.isArray(woredasData?.data)
     officer_code: "",
     password: "",
     confirm_password: "",
-    date_of_birth: "",
-    address: "",
+
+
     gender: "",
     role: "",
     location_level: "",
@@ -169,24 +187,30 @@ const woredas = Array.isArray(woredasData?.data)
     return [...available, { name: form.role, label: roleLabel(form.role) }];
   }, [roles, form.role]);
 
+  // Keep existing assignments selectable even if they are absent from
+  // the first paginated response. Do not silently change their IDs.
+  const cityOptions = useMemo(() => {
+    if (!form.city_id || cities.some((item: any) => String(item.id) === String(form.city_id))) return cities;
+    return [...cities, { id: form.city_id, name: user?.city?.name || `City #${form.city_id}` }];
+  }, [cities, form.city_id, user]);
+
   const filteredSubcities = useMemo(() => {
-  if (!Array.isArray(subcities)) return [];
+    if (!form.city_id) return [];
+    const matching = subcities.filter((item: any) => String(item.city_id) === String(form.city_id));
+    if (form.subcity_id && !matching.some((item: any) => String(item.id) === String(form.subcity_id))) {
+      matching.push({ id: form.subcity_id, name: user?.subcity?.name || `Subcity #${form.subcity_id}` });
+    }
+    return matching;
+  }, [subcities, form.city_id, form.subcity_id, user]);
 
-  return subcities.filter(
-    (subcity: any) =>
-      Number(subcity.city_id) === Number(form.city_id)
-  );
-}, [subcities, form.city_id]);
-
-const filteredWoredas = useMemo(() => {
-  if (!Array.isArray(woredas)) return [];
-
-  return woredas.filter(
-    (woreda: any) =>
-      Number(woreda.subcity_id) === Number(form.subcity_id)
-  );
-}, [woredas, form.subcity_id]);
-
+  const filteredWoredas = useMemo(() => {
+    if (!form.subcity_id) return [];
+    const matching = woredas.filter((item: any) => String(item.subcity_id) === String(form.subcity_id));
+    if (form.woreda_id && !matching.some((item: any) => String(item.id) === String(form.woreda_id))) {
+      matching.push({ id: form.woreda_id, name: user?.woreda?.name || `Woreda #${form.woreda_id}` });
+    }
+    return matching;
+  }, [woredas, form.subcity_id, form.woreda_id, user]);
 
   const requiresCity = selectedRole.isScoped && ["city", "subcity", "woreda"].includes(form.location_level);
   const requiresSubcity = selectedRole.isScoped && ["subcity", "woreda"].includes(form.location_level);
@@ -205,16 +229,16 @@ const filteredWoredas = useMemo(() => {
       officer_code: user.officer_code || "",
       password: "",
       confirm_password: "",
-      date_of_birth: user.date_of_birth || "",
-      address: user.address || "",
+
+
       gender: user.gender || "",
       role: roleName,
       location_level: role.isScoped
-        ? user.location_level || locationLevelFromIds(user.city_id, user.subcity_id, user.woreda_id) || "city"
+        ? user.location_level || locationLevelFromIds(user.city_id ?? user.city?.id, user.subcity_id ?? user.subcity?.id, user.woreda_id ?? user.woreda?.id) || "city"
         : "",
-      city_id: user.city_id || "",
-      subcity_id: user.subcity_id || "",
-      woreda_id: user.woreda_id || "",
+      city_id: user.city_id ?? user.city?.id ?? "",
+      subcity_id: user.subcity_id ?? user.subcity?.id ?? "",
+      woreda_id: user.woreda_id ?? user.woreda?.id ?? "",
     });
   }, [user]);
 
@@ -231,16 +255,16 @@ const filteredWoredas = useMemo(() => {
       officer_code: user.officer_code || "",
       password: "",
       confirm_password: "",
-      date_of_birth: user.date_of_birth || "",
-      address: user.address || "",
+
+
       gender: user.gender || "",
       role: roleName,
       location_level: role.isScoped
-        ? user.location_level || locationLevelFromIds(user.city_id, user.subcity_id, user.woreda_id) || "city"
+        ? user.location_level || locationLevelFromIds(user.city_id ?? user.city?.id, user.subcity_id ?? user.subcity?.id, user.woreda_id ?? user.woreda?.id) || "city"
         : "",
-      city_id: user.city_id || "",
-      subcity_id: user.subcity_id || "",
-      woreda_id: user.woreda_id || "",
+      city_id: user.city_id ?? user.city?.id ?? "",
+      subcity_id: user.subcity_id ?? user.subcity?.id ?? "",
+      woreda_id: user.woreda_id ?? user.woreda?.id ?? "",
     });
   }
 
@@ -282,7 +306,7 @@ const filteredWoredas = useMemo(() => {
   function handleUpdate() {
     setValidationErrors({});
     setSubmitError("");
-    if (!validate()) return;
+    if (loadingUser || !user || !validate()) return;
 
     updateUser.mutate(
       {
@@ -292,8 +316,8 @@ const filteredWoredas = useMemo(() => {
           email: form.email,
           phone: form.phone,
           officer_code: form.officer_code.trim() || null,
-          address: form.address || undefined,
-          date_of_birth: form.date_of_birth || undefined,
+
+
           gender: form.gender || undefined,
           role: form.role,
           location_level: selectedRole.isScoped ? form.location_level : undefined,
@@ -358,14 +382,6 @@ const filteredWoredas = useMemo(() => {
 {fieldError("officer_code")}
 </div>
           </div>
-            <div className="min-w-0" onChangeCapture={() => clearError("date_of_birth")}>
-<Input placeholder="Date of Birth" type="date" value={form.date_of_birth} onChange={(event) => setForm({ ...form, date_of_birth: event.target.value })} />
-{fieldError("date_of_birth")}
-</div>
-            <div className="min-w-0" onChangeCapture={() => clearError("address")}>
-<Input placeholder="Address" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
-{fieldError("address")}
-</div>
 
             <div className="min-w-0" onChangeCapture={() => clearError("gender")}>
 <select className="rounded border p-2" value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as any })}>
@@ -413,9 +429,9 @@ const filteredWoredas = useMemo(() => {
                   setForm({
                     ...form,
                     location_level: event.target.value as LocationLevel,
-                    city_id: "",
-                    subcity_id: "",
-                    woreda_id: "",
+                    city_id: form.city_id,
+                    subcity_id: event.target.value === "city" ? "" : form.subcity_id,
+                    woreda_id: event.target.value === "woreda" ? form.woreda_id : "",
                   })
                 }
               >
@@ -437,19 +453,21 @@ const filteredWoredas = useMemo(() => {
                 onChange={(event) =>
                   setForm({
                     ...form,
-                    city_id: Number(event.target.value),
+                    city_id: event.target.value ? Number(event.target.value) : "",
                     subcity_id: "",
                     woreda_id: "",
                   })
                 }
               >
-                <option value="">City *</option>
-                {cities.map((city: any) => (
+                <option value="">{loadingCities ? "Loading cities..." : "Select City *"}</option>
+                {cityOptions.map((city: any) => (
                   <option key={city.id} value={city.id}>
                     {city.name}
                   </option>
                 ))}
               </select>
+{citiesError && <p role="alert" className="text-sm text-destructive">Unable to load cities. Retry after checking the location API.</p>}
+{!loadingCities && !citiesError && cityOptions.length === 0 && <p className="text-sm text-muted-foreground">No cities available.</p>}
 {fieldError("city_id")}
 </div>
             )}
@@ -463,18 +481,20 @@ const filteredWoredas = useMemo(() => {
                 onChange={(event) =>
                   setForm({
                     ...form,
-                    subcity_id: Number(event.target.value),
+                    subcity_id: event.target.value ? Number(event.target.value) : "",
                     woreda_id: "",
                   })
                 }
               >
-                <option value="">Subcity *</option>
+                <option value="">{!form.city_id ? "Select City first" : loadingSubcities ? "Loading subcities..." : "Select Subcity *"}</option>
                 {filteredSubcities.map((subcity: any) => (
                   <option key={subcity.id} value={subcity.id}>
                     {subcity.name}
                   </option>
                 ))}
               </select>
+{subcitiesError && <p role="alert" className="text-sm text-destructive">Unable to load subcities.</p>}
+{form.city_id && !loadingSubcities && !subcitiesError && filteredSubcities.length === 0 && <p className="text-sm text-muted-foreground">No subcities found for this city.</p>}
 {fieldError("subcity_id")}
 </div>
             )}
@@ -485,15 +505,17 @@ const filteredWoredas = useMemo(() => {
                 className="rounded border p-2"
                 value={form.woreda_id}
                 disabled={!form.subcity_id}
-                onChange={(event) => setForm({ ...form, woreda_id: Number(event.target.value) })}
+                onChange={(event) => setForm({ ...form, woreda_id: event.target.value ? Number(event.target.value) : "" })}
               >
-                <option value="">Woreda *</option>
+                <option value="">{!form.subcity_id ? "Select Subcity first" : loadingWoredas ? "Loading woredas..." : "Select Woreda *"}</option>
                 {filteredWoredas.map((woreda: any) => (
                   <option key={woreda.id} value={woreda.id}>
                     {woreda.name}
                   </option>
                 ))}
               </select>
+{woredasError && <p role="alert" className="text-sm text-destructive">Unable to load woredas.</p>}
+{form.subcity_id && !loadingWoredas && !woredasError && filteredWoredas.length === 0 && <p className="text-sm text-muted-foreground">No woredas found for this subcity.</p>}
 {fieldError("woreda_id")}
 </div>
             )}
@@ -510,7 +532,7 @@ const filteredWoredas = useMemo(() => {
 
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={reset}>Reset</Button>
-            <Button onClick={handleUpdate}>Update User</Button>
+            <Button disabled={loadingUser || updateUser.isPending || (requiresCity && (loadingCities || citiesError)) || (requiresSubcity && (loadingSubcities || subcitiesError)) || (requiresWoreda && (loadingWoredas || woredasError))} onClick={handleUpdate}>Update User</Button>
           </div>
         </CardContent>
       </Card>

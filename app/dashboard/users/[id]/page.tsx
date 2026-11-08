@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import {
-  useUsers,
+  useUser,
 } from "@/hooks/user/useUsers";
 
 import { useUpdateUser } from "@/hooks/user/useUsers";
@@ -28,10 +28,15 @@ const validatePassword = (password: string) => password.length >= 8;
 export default function UserDetailsPage() {
   const { id } = useParams();
 
- const { data } = useUsers({
-  page: 1,
-});
-  const user = data?.data?.find((u: any) => u.id == id);
+  const userId = Array.isArray(id) ? id[0] : id;
+
+  const {
+    data,
+    isLoading,
+    isError,
+  } = useUser(userId);
+
+  const user = data?.data;
 
   const updateUser = useUpdateUser();
 
@@ -39,6 +44,18 @@ export default function UserDetailsPage() {
   const [openPassword, setOpenPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  if (isLoading) {
+    return <div className="p-10 text-center">Loading user...</div>;
+  }
+
+  if (isError) {
+    return (
+      <div className="p-10 text-center text-red-600">
+        Unable to load user.
+      </div>
+    );
+  }
 
   if (!user) {
     return (

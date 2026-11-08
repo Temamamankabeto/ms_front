@@ -138,6 +138,11 @@ const reportMenu: SidebarItem = {
       permission: "applications.summary",
     },
     {
+      label: "Consolidated Agent Report",
+      href: "/dashboard/agent-consolidated-report",
+      scopes: ["super_admin", "admin:city", "admin:subcity", "admin:woreda"],
+    },
+    {
       label: "Customer Feedback",
       href: "/dashboard/feedback",
       permission: "feedback.read",
@@ -230,6 +235,7 @@ const agentSections = (role: AppRoleKey): SidebarSection[] => [
   s("Main", [dashboardItem(role)]),
   s("Customer Services", [
     { label: "Incoming Tickets", href: "/dashboard/agent/incoming-tickets", icon: ClipboardList },
+    { label: "My Agent Report", href: "/dashboard/agent/reports", icon: BarChart3 },
   ]),
 ];
 

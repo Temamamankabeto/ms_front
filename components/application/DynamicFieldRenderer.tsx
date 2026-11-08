@@ -12,12 +12,14 @@ import {
 } from "@/components/ui/select";
 
 import { ServiceFormField } from "@/types/application-workflow";
+import ScannerAttachment from "@/components/application/ScannerAttachment";
 
 interface Props {
   field: ServiceFormField;
   value: any;
   values?: Record<string, any>;
   onChange: (name: string, value: any) => void;
+  enableScanner?: boolean;
 }
 
 function normalizeOptions(options?: string[] | string | null) {
@@ -57,7 +59,7 @@ function conditionMatches(operator: string, actual: any, expected: string) {
   }
 }
 
-export default function DynamicFieldRenderer({ field, value, values = {}, onChange }: Props) {
+export default function DynamicFieldRenderer({ field, value, values = {}, onChange, enableScanner = false }: Props) {
   const hiddenByCondition = field.conditions?.some((condition) => {
     const dependsOnValue = values[String(condition.depends_on_field_id)] ?? values[condition.depends_on_field?.name ?? ""];
     const matches = conditionMatches(condition.operator, dependsOnValue, condition.expected_value);
@@ -142,12 +144,21 @@ export default function DynamicFieldRenderer({ field, value, values = {}, onChan
       return (
         <div className="space-y-2">
           {label}
-          <Input
-            type="file"
-            required={Boolean(field.is_required)}
-            accept={field.type === "image" ? "image/*" : undefined}
-            onChange={(event) => onChange(field.name, event.target.files?.[0] || null)}
-          />
+          {enableScanner ? (
+            <ScannerAttachment
+              name={field.name}
+              isRequired={Boolean(field.is_required)}
+              acceptImagesOnly={field.type === "image"}
+              onChange={(file) => onChange(field.name, file)}
+            />
+          ) : (
+            <Input
+              type="file"
+              required={Boolean(field.is_required)}
+              accept={field.type === "image" ? "image/*" : undefined}
+              onChange={(event) => onChange(field.name, event.target.files?.[0] || null)}
+            />
+          )}
           {field.help_text && <p className="text-xs text-muted-foreground">{field.help_text}</p>}
         </div>
       );

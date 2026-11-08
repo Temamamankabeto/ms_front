@@ -296,6 +296,22 @@ export default function ApplyPage() {
       return;
     }
 
+    if (value === null) {
+      setFiles((currentFiles) => {
+        const nextFiles = { ...currentFiles };
+        delete nextFiles[name];
+        return nextFiles;
+      });
+
+      setFormValues((currentValues) => {
+        const nextValues = { ...currentValues };
+        delete nextValues[name];
+        return nextValues;
+      });
+
+      return;
+    }
+
     setFormValues((currentValues) => ({
       ...currentValues,
       [name]: value,
@@ -634,6 +650,7 @@ export default function ApplyPage() {
                           onChange={
                             handleChange
                           }
+                           enableScanner={isAgent}
                         />
                       </div>
                     ))}

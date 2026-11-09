@@ -16,8 +16,8 @@ export default function AgentIncomingTickets() {
   const filteredTickets = useMemo(() => tickets.filter((ticket) =>
     ticket.ticket_number.toLowerCase().includes(ticketSearch.trim().toLowerCase())
   ), [tickets, ticketSearch]);
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get("/agent/tickets/incoming");
       setTickets(Array.isArray(response.data?.data) ? response.data.data : []);
@@ -25,9 +25,19 @@ export default function AgentIncomingTickets() {
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
       setError(e.response?.data?.message || "Unable to load incoming tickets.");
-    } finally { setLoading(false); }
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+
+    const interval = window.setInterval(() => {
+      void refresh(true);
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [refresh]);
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-2 md:p-6">
       <div className="rounded-2xl border bg-card p-6">

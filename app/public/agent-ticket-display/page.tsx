@@ -5,7 +5,7 @@ import { Maximize2, Monitor, MapPin, Settings2 } from "lucide-react";
 
 type Level = "city" | "subcity" | "woreda";
 type Office = { administrative_level: Level; city_id: number; subcity_id: number | null; woreda_id: number | null };
-type Ticket = { id: number; ticket_number: string; window_id: number; assigned_agents: string[] };
+type Ticket = { id: number; ticket_number: string; window_id: number; assigned_agents: string[]; agent_codes: string[] };
 type QueueData = { location: Office; tickets: Ticket[] };
 type ApiResponse = { success: boolean; message: string; data: QueueData };
 
@@ -204,20 +204,18 @@ export default function AgentTicketDisplayPage() {
             <table className="w-full table-fixed border-collapse text-left">
               <thead className="sticky top-0 z-10 bg-slate-800 text-sm uppercase tracking-wide text-slate-200 md:text-lg">
                 <tr>
-                  <th scope="col" className="w-[28%] px-3 py-4 md:px-6">Ticket Number</th>
-                  <th scope="col" className="w-[20%] px-3 py-4 md:px-6">Window</th>
-                  <th scope="col" className="w-[52%] px-3 py-4 md:px-6">Assigned Agent</th>
+                  <th scope="col" className="w-1/2 px-3 py-4 md:px-6">Ticket Number</th>
+                  <th scope="col" className="w-1/2 px-3 py-4 md:px-6">Agent Code</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleTickets.map((ticket) => (
                   <tr key={ticket.id} className="border-t border-slate-700/70 bg-slate-900">
                     <td className="px-3 py-3 text-2xl font-black tabular-nums text-amber-300 md:px-6 md:text-4xl">{ticket.ticket_number}</td>
-                    <td className="px-3 py-3 text-2xl font-bold md:px-6 md:text-3xl">{ticket.window_id}</td>
-                    <td className="px-3 py-3 text-lg font-semibold md:px-6 md:text-2xl">{ticket.assigned_agents.join(", ")}</td>
+                    <td className="px-3 py-3 text-2xl font-bold tabular-nums md:px-6 md:text-4xl">{ticket.agent_codes?.length ? ticket.agent_codes.join(", ") : "—"}</td>
                   </tr>
                 ))}
-                {!visibleTickets.length && <tr><td colSpan={3} className="px-6 py-16 text-center text-xl text-slate-400">{data ? "No tickets awaiting application submission" : "Loading agent tickets…"}</td></tr>}
+                {!visibleTickets.length && <tr><td colSpan={2} className="px-6 py-16 text-center text-xl text-slate-400">{data ? "No tickets awaiting application submission" : "Loading agent tickets…"}</td></tr>}
               </tbody>
             </table>
           </div>

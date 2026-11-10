@@ -137,13 +137,32 @@ jobs:
           : "${DEPLOY_HOST:?Missing MESOB_DEPLOY_HOST}"
           : "${DEPLOY_USER:?Missing MESOB_DEPLOY_USER}"
           : "${DEPLOY_KEY:?Missing MESOB_DEPLOY_SSH_KEY}"
-          test "$DEPLOY_USER" = 'mesobdeploy'
+          if [ "$DEPLOY_USER" != 'mesobdeploy' ]; then
+            echo 'DEPLOY_CHECK_FAILED: username does not match mesobdeploy' >&2
+            exit 1
+          fi
+          echo 'DEPLOY_CHECK_PASSED: username'
+
           install -d -m 700 "$HOME/.ssh"
           printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
           chmod 600 "$HOME/.ssh/id_ed25519"
-          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null
-          ssh-keyscan -T 10 -t ed25519 "$DEPLOY_HOST" > "$HOME/.ssh/known_hosts" 2>/dev/null
-          test -s "$HOME/.ssh/known_hosts"
+
+          if ! ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null 2>&1; then
+            echo 'DEPLOY_CHECK_FAILED: invalid SSH private key' >&2
+            exit 1
+          fi
+          echo 'DEPLOY_CHECK_PASSED: private key'
+
+          if ! ssh-keyscan -T 15 -t ed25519 "$DEPLOY_HOST" > "$HOME/.ssh/known_hosts" 2>/dev/null; then
+            echo 'DEPLOY_CHECK_FAILED: SSH host key retrieval' >&2
+            exit 1
+          fi
+
+          if [ ! -s "$HOME/.ssh/known_hosts" ]; then
+            echo 'DEPLOY_CHECK_FAILED: empty SSH known_hosts' >&2
+            exit 1
+          fi
+          echo 'DEPLOY_CHECK_PASSED: host key retrieved'
           FINGERPRINT=$(ssh-keygen -lf "$HOME/.ssh/known_hosts" -E sha256 | awk '{print $2}')
           test "$FINGERPRINT" = 'SHA256:JORh7HsxyasAKw29nUoJwE5RYf7TIiJ2VKMZmlLHIkw' || {
             echo 'SSH server host key mismatch' >&2

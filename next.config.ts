@@ -36,6 +36,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
+        source: "/counter/display/:officerCode",
+        destination: "/counter-legacy/index.html?officer=:officerCode",
+      },
+      {
         source: "/storage/:path*",
         destination: `${backendApiUrl.replace(/\/api$/, "")}/storage/:path*`,
       },

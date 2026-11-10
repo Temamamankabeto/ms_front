@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MESOB Officer Counter</title>
+<style>
+html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; color:#07145f; font-family:Arial,Helvetica,sans-serif; }
+* { box-sizing:border-box; }
+#display { position:relative; width:100%; height:100%; min-height:450px; overflow:hidden; }
+#main { position:absolute; top:0; bottom:76px; left:0; right:0; padding:24px; }
+#photo-panel { position:absolute; top:24px; bottom:24px; left:24px; width:35%; background:#fff; border-radius:24px; text-align:center; overflow:hidden; box-shadow:0 10px 45px rgba(20,40,90,.08); }
+#photo-panel table { width:100%; height:100%; border-collapse:collapse; }
+#photo { display:none; max-width:94%; max-height:75vh; width:auto; height:auto; border-radius:16px; }
+#photo-fallback { color:#94a3b8; background:#f1f5f9; border-radius:16px; padding:50px 10px; font-size:45px; font-weight:bold; }
+#information { position:absolute; top:24px; bottom:24px; left:38%; right:24px; text-align:center; }
+#officer-label { margin:3vh 0 0; font-size:3vw; font-weight:bold; line-height:1.2; }
+#officer-code { margin:1vh 0 3vh; font-size:7vw; font-weight:bold; line-height:1.1; word-wrap:break-word; }
+#ticket-panel { background:#07145f; color:#fff; border-radius:26px; height:45vh; min-height:180px; padding:4vh 12px; box-shadow:0 15px 40px rgba(7,20,95,.2); }
+#ticket-label { font-size:2.5vw; font-weight:bold; letter-spacing:1px; }
+#ticket-number { margin:4vh 0; font-size:8vw; font-weight:bold; line-height:1.1; word-wrap:break-word; }
+#ticket-status { font-size:18px; font-weight:bold; letter-spacing:2px; }
+#error { margin-top:12px; color:#b91c1c; font-size:16px; }
+#footer { position:absolute; left:0; right:0; bottom:0; height:76px; background:#07145f; color:#fff; overflow:hidden; }
+#services { position:absolute; left:0; top:0; white-space:nowrap; font-size:3vw; font-weight:bold; line-height:76px; padding-left:30px; }
+#services.scrolling { -webkit-animation:counter-scroll 30s linear infinite; animation:counter-scroll 30s linear infinite; }
+@-webkit-keyframes counter-scroll { from { -webkit-transform:translateX(100vw); } to { -webkit-transform:translateX(-100%); } }
+@keyframes counter-scroll { from { transform:translateX(100vw); } to { transform:translateX(-100%); } }
+@media screen and (min-width:1600px) { #main { padding:36px; } #photo-panel { top:28px; bottom:28px; left:36px; } #information { top:28px; bottom:28px; right:36px; } #officer-code { font-size:110px; } #ticket-number { font-size:150px; } }
+@media screen and (max-width:899px) and (orientation:portrait) {
+  #display { height:auto; min-height:100%; overflow:visible; }
+  #main { position:relative; top:auto; bottom:auto; left:auto; right:auto; padding:12px; }
+  #photo-panel { position:relative; top:auto; bottom:auto; left:auto; width:100%; height:34vh; min-height:180px; margin-bottom:16px; }
+  #photo { max-height:30vh; }
+  #information { position:relative; top:auto; bottom:auto; left:auto; right:auto; width:100%; }
+  #officer-label { font-size:24px; margin:0; }
+  #officer-code { font-size:46px; margin:8px 0 16px; }
+  #ticket-panel { height:auto; min-height:180px; padding:24px 12px; }
+  #ticket-label { font-size:22px; }
+  #ticket-number { font-size:58px; margin:30px 0; }
+  #footer { position:relative; height:65px; }
+  #services { font-size:24px; line-height:65px; }
+}
+@media screen and (max-width:700px) and (orientation:landscape) {
+  #main { bottom:55px; padding:8px; }
+  #photo-panel { left:8px; top:8px; bottom:8px; }
+  #information { top:8px; right:8px; bottom:8px; }
+  #officer-label { font-size:18px; }
+  #officer-code { font-size:32px; }
+  #ticket-panel { min-height:130px; height:48vh; padding:12px; }
+  #ticket-label { font-size:18px; }
+  #ticket-number { font-size:42px; margin:18px 0; }
+  #footer { height:55px; }
+  #services { font-size:18px; line-height:55px; }
+}
+@media (prefers-reduced-motion:reduce) { #services.scrolling { animation:none; -webkit-animation:none; } }
+</style>
+</head>
+<body>
+<div id="display">
+    <div id="main">
+        <div id="photo-panel">
+            <table><tr><td align="center" valign="middle">
+                <img id="photo" alt="Officer portrait" style="display:none">
+                <div id="photo-fallback">OFFICER</div>
+            </td></tr></table>
+        </div>
+        <div id="information">
+            <div id="officer-label">LAKK. OOFISARAA</div>
+            <div id="officer-code">----</div>
+            <div id="ticket-panel">
+                <div id="ticket-label">CURRENT TICKET</div>
+                <div id="ticket-number">----</div>
+                <div id="ticket-status"></div>
+            </div>
+            <div id="error"></div>
+        </div>
+    </div>
+    <div id="footer">
+        <div id="services">Loading assigned services...</div>
+    </div>
+</div>
+
+<script type="text/javascript">
+(function () {
+    var code = "";
+    var polling = false;
+    var lastPhoto = "";
+    var photo = document.getElementById("photo");
+    var fallback = document.getElementById("photo-fallback");
+
+    function setText(id, value) {
+        var element = document.getElementById(id);
+        if (typeof element.textContent !== "undefined") {
+            element.textContent = value;
+        } else {
+            element.innerText = value;
+        }
+    }
+
+    function pathOfficerCode() {
+        var path = window.location.pathname || "";
+        var match = /^\/counter\/display\/([A-Za-z0-9_-]{1,50})\/?$/.exec(path);
+        return match ? match[1] : "";
+    }
+
+    function queryValue(name) {
+        var query = window.location.search.substring(1).split("&");
+        var i, parts;
+        for (i = 0; i < query.length; i++) {
+            parts = query[i].split("=");
+            if (parts[0] === name) {
+                try {
+                    return decodeURIComponent(
+                        (parts.slice(1).join("=")).replace(/\+/g, " ")
+                    );
+                } catch (e) {
+                    return "";
+                }
+            }
+        }
+        return "";
+    }
+
+    function render(data) {
+        var ticket = data.current_ticket;
+        var services = data.assigned_services || [];
+        var names = [];
+        var i, service, name;
+
+        setText("officer-code", data.officer_code || code);
+        setText("ticket-number",
+            ticket && ticket.ticket_number ? ticket.ticket_number : "----");
+        setText("ticket-status",
+            ticket ? (ticket.status === "called" ? "NOW CALLING" : "SERVING") : "");
+
+        for (i = 0; i < services.length; i++) {
+            service = services[i];
+            name = typeof service === "string"
+                ? service
+                : (service.name || service.service_name || service.title || "");
+            if (name && names.indexOf(name) === -1) {
+                names.push(name);
+            }
+        }
+
+        setText("services", names.length
+            ? names.join("     •     ")
+            : "No assigned services");
+        document.getElementById("services").className = names.length ? "scrolling" : "";
+
+        var photoUrl = data.officer_photo_url || "";
+
+        if (photoUrl) {
+            var storagePosition = photoUrl.indexOf("/storage/");
+            if (storagePosition >= 0) {
+                photoUrl = photoUrl.substring(storagePosition);
+            }
+        }
+
+        if (photoUrl && photoUrl !== lastPhoto) {
+            lastPhoto = photoUrl;
+            photo.style.display = "none";
+            fallback.style.display = "block";
+            photo.onload = function () {
+                photo.style.display = "inline";
+                fallback.style.display = "none";
+            };
+            photo.onerror = function () {
+                photo.style.display = "none";
+                fallback.style.display = "block";
+            };
+            photo.src = lastPhoto;
+        }
+
+        setText("error", "");
+    }
+
+    function refresh() {
+        var xhr;
+        if (polling || !code) return;
+
+        polling = true;
+        xhr = new XMLHttpRequest();
+
+        xhr.onreadystatechange = function () {
+            var response;
+            if (xhr.readyState !== 4) return;
+            polling = false;
+
+            if (xhr.status !== 200) {
+                setText("error", "Connection unavailable. Retrying...");
+                return;
+            }
+
+            try {
+                response = JSON.parse(xhr.responseText);
+                if (!response.success || !response.data) {
+                    setText("error", response.message || "Counter unavailable.");
+                    return;
+                }
+                render(response.data);
+            } catch (e) {
+                setText("error", "Unable to read counter information.");
+            }
+        };
+
+        xhr.open(
+            "GET",
+            "/api/public/counter/" +
+                encodeURIComponent(code) +
+                "?_=" + new Date().getTime(),
+            true
+        );
+
+        try {
+            xhr.timeout = 10000;
+            xhr.ontimeout = function () {
+                polling = false;
+                setText("error", "Request timed out. Retrying...");
+            };
+        } catch (e) {}
+
+        xhr.send(null);
+    }
+
+    code = (pathOfficerCode() || queryValue("officer")).replace(/^\s+|\s+$/g, "");
+
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(code)) {
+        setText("error", "Invalid or missing officer code.");
+        return;
+    }
+
+    setText("officer-code", code.toUpperCase());
+    refresh();
+    window.setInterval(refresh, 3000);
+})();
+</script>
+</body>
+</html>

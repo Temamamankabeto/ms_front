@@ -42,6 +42,7 @@ export default function OfficerCounterPage() {
       if (controller) return;
       const request = new AbortController();
       controller = request;
+      const timeout = window.setTimeout(() => request.abort(), 10000);
       try {
         const response = await fetch(
           `/api/public/counter/${encodeURIComponent(officerCode)}`,
@@ -60,12 +61,13 @@ export default function OfficerCounterPage() {
           setError(cause instanceof Error ? cause.message : "Unable to load counter.");
         }
       } finally {
+        window.clearTimeout(timeout);
         if (controller === request) controller = null;
       }
     };
 
     void refresh();
-    const interval = window.setInterval(() => void refresh(), 3000);
+    const interval = window.setInterval(() => void refresh(), 2000);
     return () => {
       active = false;
       window.clearInterval(interval);
@@ -86,20 +88,15 @@ export default function OfficerCounterPage() {
   const officerPhotoUrl = resolveProfileImageUrl(counter?.officer_photo_url);
 
   return (
-    <main className="flex min-h-dvh flex-col overflow-x-hidden bg-[#fafbfe] text-[#07145f] lg:h-dvh lg:overflow-hidden">
-      <div className="mx-auto grid w-full max-w-[1920px] flex-1 grid-cols-1 gap-4 px-4 py-5 sm:px-6 sm:py-6 md:grid-cols-[minmax(0,35%)_minmax(0,1fr)] md:gap-6 lg:min-h-0 lg:grid-cols-[minmax(0,34%)_minmax(0,1fr)] lg:gap-8 lg:px-8 lg:py-7 2xl:gap-10 2xl:px-10">
+    <main className="flex min-h-dvh flex-col overflow-x-hidden bg-[#fafbfe] text-[#07145f] md:h-dvh md:overflow-hidden">
+      <div className="mx-auto grid w-full max-w-[1920px] flex-1 grid-cols-1 gap-3 px-3 py-3 sm:gap-4 sm:px-5 sm:py-4 md:min-h-0 md:grid-cols-[minmax(0,35%)_minmax(0,1fr)] md:gap-5 lg:grid-cols-[minmax(0,34%)_minmax(0,1fr)] lg:gap-6 lg:px-6 lg:py-5 2xl:gap-8 2xl:px-8">
         <aside className="flex min-w-0 flex-col items-center justify-center gap-3 rounded-[24px] bg-white p-4 shadow-[0_10px_45px_rgba(20,40,90,0.08)] sm:gap-4 sm:p-5 lg:min-h-0 lg:gap-5 lg:p-6">
-          <img
-            src="/mesob-kiosk-logo.png"
-            alt="MESOB office logo"
-            className="h-12 w-12 shrink-0 object-contain sm:h-14 sm:w-14 lg:h-[clamp(3rem,7vh,5rem)] lg:w-[clamp(3rem,7vh,5rem)]"
-          />
           {officerPhotoUrl && !photoFailed ? (
             <img
               src={officerPhotoUrl}
               alt="Officer portrait"
               onError={() => setPhotoFailed(true)}
-              className="h-auto max-h-[52vh] w-full max-w-[420px] rounded-2xl object-contain sm:max-h-[58vh] md:max-h-[65vh] lg:min-h-0 lg:max-h-[min(70vh,calc(100dvh-12rem))]"
+              className="h-auto max-h-[42dvh] w-full max-w-[420px] rounded-2xl object-contain sm:max-h-[52dvh] md:min-h-0 md:max-h-[min(68dvh,calc(100dvh-9rem))]"
             />
           ) : (
             <div className="flex aspect-square w-full max-w-[280px] items-center justify-center rounded-2xl bg-slate-100 text-slate-400 lg:max-w-[360px]">
@@ -116,7 +113,7 @@ export default function OfficerCounterPage() {
               {counter?.officer_code ?? officerCode.toUpperCase()}
             </p>
           </header>
-          <div className="flex min-h-[210px] w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 rounded-[26px] bg-[#07145f] px-4 py-7 text-center text-white shadow-[0_15px_40px_rgba(7,20,95,0.20)] sm:min-h-[260px] lg:max-h-[48vh] lg:gap-5">
+          <div className="flex min-h-[180px] w-full min-w-0 flex-1 flex-col items-center justify-center gap-3 rounded-[26px] bg-[#07145f] px-3 py-5 text-center text-white shadow-[0_15px_40px_rgba(7,20,95,0.20)] sm:min-h-[220px] md:min-h-0 md:max-h-[52dvh] lg:gap-5">
             <h2 className="text-xl font-bold tracking-wider sm:text-2xl lg:text-[clamp(1.5rem,2.5vw,3rem)]">CURRENT TICKET</h2>
             <p aria-live="polite" aria-atomic="true" className="max-w-full break-words text-[clamp(3.8rem,8vw,10rem)] font-black leading-none tracking-wider">
               {ticket?.ticket_number ?? "----"}

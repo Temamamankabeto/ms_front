@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -91,7 +91,7 @@ export default function OfficerCounterPage() {
 
     const interval = window.setInterval(
       () => void refresh(),
-      2000
+      3000
     );
 
     return () => {
@@ -286,15 +286,15 @@ export default function OfficerCounterPage() {
 
         .mesob-counter-header h1 {
           margin: 0;
-          font-size: 24px;
-          font-weight: 800;
+          font-size: 30px;
+          font-weight: 900;
           line-height: 1.2;
           letter-spacing: -0.5px;
         }
 
         .mesob-counter-code {
           margin: 8px 0 0;
-          font-size: 46px;
+          font-size: 56px;
           font-weight: 900;
           line-height: 1.1;
           overflow-wrap: anywhere;
@@ -318,15 +318,15 @@ export default function OfficerCounterPage() {
 
         .mesob-counter-ticket h2 {
           margin: 0;
-          font-size: 22px;
-          font-weight: 800;
+          font-size: 28px;
+          font-weight: 900;
           letter-spacing: 1px;
         }
 
         .mesob-counter-ticket-number {
           margin: 0;
           max-width: 100%;
-          font-size: 58px;
+          font-size: 76px;
           font-weight: 900;
           line-height: 1;
           overflow-wrap: anywhere;
@@ -359,8 +359,8 @@ export default function OfficerCounterPage() {
           width: max-content;
           white-space: nowrap;
           animation: mesob-counter-scroll 30s linear infinite;
-          font-size: 24px;
-          font-weight: 800;
+          font-size: 30px;
+          font-weight: 900;
         }
 
         .mesob-counter-marquee span {
@@ -418,7 +418,7 @@ export default function OfficerCounterPage() {
           }
 
           .mesob-counter-code {
-            font-size: 7vw;
+            font-size: 8vw;
           }
 
           .mesob-counter-ticket {
@@ -432,7 +432,7 @@ export default function OfficerCounterPage() {
           }
 
           .mesob-counter-ticket-number {
-            font-size: 8vw;
+            font-size: 10vw;
           }
 
           .mesob-counter-footer {
@@ -455,7 +455,7 @@ export default function OfficerCounterPage() {
           }
 
           .mesob-counter-ticket-number {
-            font-size: 150px;
+            font-size: 170px;
           }
         }
 

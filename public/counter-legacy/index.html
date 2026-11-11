@@ -15,15 +15,15 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
 #photo { display:none; max-width:94%; max-height:75vh; width:auto; height:auto; border-radius:16px; }
 #photo-fallback { color:#94a3b8; background:#f1f5f9; border-radius:16px; padding:50px 10px; font-size:45px; font-weight:bold; }
 #information { position:absolute; top:24px; bottom:24px; left:38%; right:24px; text-align:center; }
-#officer-label { margin:3vh 0 0; font-size:3vw; font-weight:bold; line-height:1.2; }
-#officer-code { margin:1vh 0 3vh; font-size:7vw; font-weight:bold; line-height:1.1; word-wrap:break-word; }
+#officer-label { margin:3vh 0 0; font-size:clamp(28px,3.6vw,68px); font-weight:900; line-height:1.2; }
+#officer-code { margin:1vh 0 3vh; font-size:clamp(52px,8vw,150px); font-weight:900; line-height:1.1; word-wrap:break-word; }
 #ticket-panel { background:#07145f; color:#fff; border-radius:26px; height:45vh; min-height:180px; padding:4vh 12px; box-shadow:0 15px 40px rgba(7,20,95,.2); }
-#ticket-label { font-size:2.5vw; font-weight:bold; letter-spacing:1px; }
-#ticket-number { margin:4vh 0; font-size:8vw; font-weight:bold; line-height:1.1; word-wrap:break-word; }
-#ticket-status { font-size:18px; font-weight:bold; letter-spacing:2px; }
+#ticket-label { font-size:clamp(26px,3vw,56px); font-weight:900; letter-spacing:1px; }
+#ticket-number { margin:4vh 0; font-size:clamp(72px,10vw,190px); font-weight:900; line-height:1.1; word-wrap:break-word; }
+#ticket-status { font-size:clamp(20px,2.2vw,38px); font-weight:900; letter-spacing:2px; }
 #error { margin-top:12px; color:#b91c1c; font-size:16px; }
 #footer { position:absolute; left:0; right:0; bottom:0; height:76px; background:#07145f; color:#fff; overflow:hidden; }
-#services { position:absolute; left:0; top:0; white-space:nowrap; font-size:3vw; font-weight:bold; line-height:76px; padding-left:30px; }
+#services { position:absolute; left:0; top:0; white-space:nowrap; font-size:clamp(26px,3.5vw,65px); font-weight:900; line-height:76px; padding-left:30px; }
 #services.scrolling { -webkit-animation:counter-scroll 30s linear infinite; animation:counter-scroll 30s linear infinite; }
 @-webkit-keyframes counter-scroll { from { -webkit-transform:translateX(100vw); } to { -webkit-transform:translateX(-100%); } }
 @keyframes counter-scroll { from { transform:translateX(100vw); } to { transform:translateX(-100%); } }
@@ -86,6 +86,8 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
 (function () {
     var code = "";
     var polling = false;
+    var refreshTimer = null;
+    var retryDelay = 3000;
     var lastPhoto = "";
     var photo = document.getElementById("photo");
     var fallback = document.getElementById("photo-fallback");
@@ -145,10 +147,12 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
             }
         }
 
-        setText("services", names.length
-            ? names.join("     •     ")
-            : "No assigned services");
-        document.getElementById("services").className = names.length ? "scrolling" : "";
+        var servicesText = names.length ? names.join("     •     ") : "No assigned services";
+        var servicesElement = document.getElementById("services");
+        if ((servicesElement.textContent || servicesElement.innerText) !== servicesText) {
+            setText("services", servicesText);
+            servicesElement.className = names.length ? "scrolling" : "";
+        }
 
         var photoUrl = data.officer_photo_url || "";
 
@@ -161,8 +165,6 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
 
         if (photoUrl && photoUrl !== lastPhoto) {
             lastPhoto = photoUrl;
-            photo.style.display = "none";
-            fallback.style.display = "block";
             photo.onload = function () {
                 photo.style.display = "inline";
                 fallback.style.display = "none";
@@ -177,6 +179,11 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
         setText("error", "");
     }
 
+    function scheduleRefresh(delay) {
+        if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(refresh, delay);
+    }
+
     function refresh() {
         var xhr;
         if (polling || !code) return;
@@ -188,6 +195,15 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
             var response;
             if (xhr.readyState !== 4) return;
             polling = false;
+            if (xhr.status === 429) {
+                var retryAfter = parseInt(xhr.getResponseHeader("Retry-After"), 10);
+                scheduleRefresh(isNaN(retryAfter) ? 10000 : Math.max(3000, retryAfter * 1000));
+                setText("error", "Counter temporarily busy. Retrying...");
+                return;
+            }
+            scheduleRefresh(xhr.status === 200 ? 3000 : Math.min(retryDelay * 2, 15000));
+            if (xhr.status === 200) retryDelay = 3000;
+            else retryDelay = Math.min(retryDelay * 2, 15000);
 
             if (xhr.status !== 200) {
                 setText("error", "Connection unavailable. Retrying...");
@@ -218,6 +234,7 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
             xhr.timeout = 10000;
             xhr.ontimeout = function () {
                 polling = false;
+                scheduleRefresh(5000);
                 setText("error", "Request timed out. Retrying...");
             };
         } catch (e) {}
@@ -234,7 +251,10 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
 
     setText("officer-code", code.toUpperCase());
     refresh();
-    window.setInterval(refresh, 3000);
+    // Schedule the next request only after the previous one finishes.
+    window.addEventListener("pageshow", function () {
+        if (!polling) scheduleRefresh(3000);
+    });
 })();
 </script>
 </body>

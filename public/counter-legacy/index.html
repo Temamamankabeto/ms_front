@@ -15,32 +15,32 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
 #photo { display:none; max-width:94%; max-height:75vh; width:auto; height:auto; border-radius:16px; }
 #photo-fallback { color:#94a3b8; background:#f1f5f9; border-radius:16px; padding:50px 10px; font-size:45px; font-weight:bold; }
 #information { position:absolute; top:24px; bottom:24px; left:38%; right:24px; text-align:center; }
-#officer-label { margin:3vh 0 0; font-size:clamp(28px,3.6vw,68px); font-weight:900; line-height:1.2; }
-#officer-code { margin:1vh 0 3vh; font-size:clamp(52px,8vw,150px); font-weight:900; line-height:1.1; word-wrap:break-word; }
+#officer-label { margin:3vh 0 0; font-size:clamp(38px,4.6vw,86px); font-weight:900; line-height:1.2; }
+#officer-code { margin:1vh 0 3vh; font-size:clamp(86px,11vw,200px); font-weight:900; line-height:1.1; word-wrap:break-word; }
 #ticket-panel { background:#07145f; color:#fff; border-radius:26px; height:45vh; min-height:180px; padding:4vh 12px; box-shadow:0 15px 40px rgba(7,20,95,.2); }
-#ticket-label { font-size:clamp(26px,3vw,56px); font-weight:900; letter-spacing:1px; }
-#ticket-number { margin:4vh 0; font-size:clamp(72px,10vw,190px); font-weight:900; line-height:1.1; word-wrap:break-word; }
-#ticket-status { font-size:clamp(20px,2.2vw,38px); font-weight:900; letter-spacing:2px; }
+#ticket-label { font-size:clamp(34px,3.8vw,72px); font-weight:900; letter-spacing:1px; }
+#ticket-number { margin:4vh 0; font-size:clamp(100px,13vw,240px); font-weight:900; line-height:1.1; word-wrap:break-word; }
+#ticket-status { font-size:clamp(24px,2.7vw,48px); font-weight:900; letter-spacing:2px; }
 #error { margin-top:12px; color:#b91c1c; font-size:16px; }
 #footer { position:absolute; left:0; right:0; bottom:0; height:76px; background:#07145f; color:#fff; overflow:hidden; }
-#services { position:absolute; left:0; top:0; white-space:nowrap; font-size:clamp(26px,3.5vw,65px); font-weight:900; line-height:76px; padding-left:30px; }
+#services { position:absolute; left:0; top:0; white-space:nowrap; font-size:clamp(34px,4.3vw,78px); font-weight:900; line-height:76px; padding-left:30px; }
 #services.scrolling { -webkit-animation:counter-scroll 30s linear infinite; animation:counter-scroll 30s linear infinite; }
 @-webkit-keyframes counter-scroll { from { -webkit-transform:translateX(100vw); } to { -webkit-transform:translateX(-100%); } }
 @keyframes counter-scroll { from { transform:translateX(100vw); } to { transform:translateX(-100%); } }
-@media screen and (min-width:1600px) { #main { padding:36px; } #photo-panel { top:28px; bottom:28px; left:36px; } #information { top:28px; bottom:28px; right:36px; } #officer-code { font-size:110px; } #ticket-number { font-size:150px; } }
+@media screen and (min-width:1600px) { #main { padding:36px; } #photo-panel { top:28px; bottom:28px; left:36px; } #information { top:28px; bottom:28px; right:36px; } #officer-code { font-size:clamp(110px,10vw,200px); } #ticket-number { font-size:clamp(150px,12vw,240px); } }
 @media screen and (max-width:899px) and (orientation:portrait) {
   #display { height:auto; min-height:100%; overflow:visible; }
   #main { position:relative; top:auto; bottom:auto; left:auto; right:auto; padding:12px; }
   #photo-panel { position:relative; top:auto; bottom:auto; left:auto; width:100%; height:34vh; min-height:180px; margin-bottom:16px; }
   #photo { max-height:30vh; }
   #information { position:relative; top:auto; bottom:auto; left:auto; right:auto; width:100%; }
-  #officer-label { font-size:24px; margin:0; }
-  #officer-code { font-size:46px; margin:8px 0 16px; }
+  #officer-label { font-size:30px; margin:0; }
+  #officer-code { font-size:60px; margin:8px 0 16px; }
   #ticket-panel { height:auto; min-height:180px; padding:24px 12px; }
-  #ticket-label { font-size:22px; }
-  #ticket-number { font-size:58px; margin:30px 0; }
+  #ticket-label { font-size:28px; }
+  #ticket-number { font-size:72px; margin:30px 0; }
   #footer { position:relative; height:65px; }
-  #services { font-size:24px; line-height:65px; }
+  #services { font-size:30px; line-height:65px; }
 }
 @media screen and (max-width:700px) and (orientation:landscape) {
   #main { bottom:55px; padding:8px; }

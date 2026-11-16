@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MESOB Screen Diagnostic</title>
+<style>
+body {
+    background: #ffffff;
+    color: #07145f;
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+h1 { font-size: 40px; }
+p { font-size: 30px; }
+</style>
+</head>
+<body>
+<h1>MESOB SCREEN TEST</h1>
+<p id="screen">Screen: checking...</p>
+<p id="viewport">Viewport: checking...</p>
+<p id="pixel">Pixel ratio: checking...</p>
+<script>
+document.getElementById("screen").innerHTML =
+    "Screen: " + screen.width + " x " + screen.height;
+
+document.getElementById("viewport").innerHTML =
+    "Viewport: " + window.innerWidth + " x " + window.innerHeight;
+
+document.getElementById("pixel").innerHTML =
+    "Pixel ratio: " + (window.devicePixelRatio || 1);
+</script>
+</body>
+</html>

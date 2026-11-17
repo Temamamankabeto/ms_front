@@ -150,6 +150,114 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
         margin:36px 0;
     }
 }
+
+/* MESOB QMS-inspired display styling */
+@media screen and (min-width:900px) {
+
+    html, body {
+        background:#e0edf6;
+    }
+
+    #display {
+        background:#e0edf6;
+        background:linear-gradient(
+            135deg,
+            #f0f6fc 0%,
+            #e0edf6 50%,
+            #c8d8e6 100%
+        );
+    }
+
+    #main {
+        padding:30px;
+    }
+
+    #photo-panel {
+        left:30px;
+        top:30px;
+        bottom:30px;
+        width:32%;
+        border-radius:30px;
+        box-shadow:0 8px 25px rgba(74,111,165,.2);
+    }
+
+    #photo {
+        border-radius:25px;
+        max-width:96%;
+        max-height:78vh;
+    }
+
+    #information {
+        left:36%;
+        right:30px;
+        top:30px;
+        bottom:30px;
+    }
+
+    #officer-label {
+        color:#08156e;
+        font-size:58px;
+        margin:8px 0 0;
+        font-weight:900;
+    }
+
+    #officer-code {
+        color:#010c54;
+        font-size:150px;
+        margin:5px 0 20px;
+        font-weight:900;
+    }
+
+    #ticket-panel {
+        background:#010c54;
+        background:linear-gradient(
+            145deg,
+            #010c54,
+            #08156e
+        );
+        border-radius:25px;
+        height:43vh;
+        min-height:300px;
+        padding:24px 12px;
+        box-shadow:0 15px 40px rgba(74,111,165,.3);
+    }
+
+    #ticket-label {
+        font-size:48px;
+        font-weight:900;
+        letter-spacing:2px;
+    }
+
+    #ticket-number {
+        font-size:170px;
+        font-weight:900;
+        margin:30px 0;
+    }
+
+    #footer {
+        background:#010c54;
+        background:linear-gradient(
+            90deg,
+            #010c54,
+            #08156e
+        );
+    }
+}
+
+@media screen and (min-width:1600px) {
+
+    #officer-label {
+        font-size:68px;
+    }
+
+    #officer-code {
+        font-size:175px;
+    }
+
+    #ticket-number {
+        font-size:190px;
+    }
+}
 </style>
 </head>
 <body>
@@ -319,7 +427,12 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
 
         xhr.open(
             "GET",
-            "https://mesobbackend.adamacity.gov.et/api/public/counter/" +
+            (
+                window.location.hostname === "localhost" ||
+                window.location.hostname === "127.0.0.1"
+                    ? "/api/public/counter/"
+                    : "https://mesobbackend.adamacity.gov.et/api/public/counter/"
+            ) +
                 encodeURIComponent(code) +
                 "?_=" + new Date().getTime(),
             true

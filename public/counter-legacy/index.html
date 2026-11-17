@@ -427,12 +427,7 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
 
         xhr.open(
             "GET",
-            (
-                window.location.hostname === "localhost" ||
-                window.location.hostname === "127.0.0.1"
-                    ? "/api/public/counter/"
-                    : "https://mesobbackend.adamacity.gov.et/api/public/counter/"
-            ) +
+            "/api/public/counter/" +
                 encodeURIComponent(code) +
                 "?_=" + new Date().getTime(),
             true

@@ -294,9 +294,12 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
     var lastPhoto = "";
     var photo = document.getElementById("photo");
     var fallback = document.getElementById("photo-fallback");
+    var serverRendered = false;
 
     function setText(id, value) {
         var element = document.getElementById(id);
+        if (!element) return;
+
         if (typeof element.textContent !== "undefined") {
             element.textContent = value;
         } else {
@@ -313,115 +316,197 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
     function queryValue(name) {
         var query = window.location.search.substring(1).split("&");
         var i, parts;
+
         for (i = 0; i < query.length; i++) {
             parts = query[i].split("=");
+
             if (parts[0] === name) {
                 try {
                     return decodeURIComponent(
-                        (parts.slice(1).join("=")).replace(/\+/g, " ")
+                        parts.slice(1).join("=").replace(/\+/g, " ")
                     );
                 } catch (e) {
                     return "";
                 }
             }
         }
+
         return "";
     }
 
-    function render(data) {
-        var ticket = data.current_ticket;
+    function normalizePhotoUrl(value) {
+        if (!value || typeof value !== "string") return "";
+
+        var position = value.indexOf("/storage/");
+        if (position < 0) return "";
+
+        var url = value.substring(position);
+
+        if (!/^\/storage\/[A-Za-z0-9/_.,%-]+(?:\?v=[A-Za-z0-9%:._-]+)?$/.test(url)) {
+            return "";
+        }
+
+        return url;
+    }
+
+    function updateTicket(ticket) {
+        setText(
+            "ticket-number",
+            ticket && ticket.ticket_number ? ticket.ticket_number : "----"
+        );
+
+        setText(
+            "ticket-status",
+            ticket
+                ? (ticket.status === "called" ? "NOW CALLING" : "SERVING")
+                : ""
+        );
+    }
+
+    function updateInitialInformation(data) {
         var services = data.assigned_services || [];
         var names = [];
-        var i, service, name;
+        var i, j, service, name, found;
 
         setText("officer-code", data.officer_code || code);
-        setText("ticket-number",
-            ticket && ticket.ticket_number ? ticket.ticket_number : "----");
-        setText("ticket-status",
-            ticket ? (ticket.status === "called" ? "NOW CALLING" : "SERVING") : "");
+        updateTicket(data.current_ticket);
 
         for (i = 0; i < services.length; i++) {
             service = services[i];
+
             name = typeof service === "string"
                 ? service
                 : (service.name || service.service_name || service.title || "");
-            if (name && names.indexOf(name) === -1) {
+
+            found = false;
+
+            for (j = 0; j < names.length; j++) {
+                if (names[j] === name) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (name && !found) {
                 names.push(name);
             }
         }
 
-        var servicesText = names.length ? names.join("     •     ") : "No assigned services";
         var servicesElement = document.getElementById("services");
-        if ((servicesElement.textContent || servicesElement.innerText) !== servicesText) {
-            setText("services", servicesText);
-            servicesElement.className = names.length ? "scrolling" : "";
-        }
 
-        var photoUrl = data.officer_photo_url || "";
+        setText(
+            "services",
+            names.length
+                ? names.join("     \u2022     ")
+                : "No assigned services"
+        );
 
-        if (photoUrl) {
-            var storagePosition = photoUrl.indexOf("/storage/");
-            if (storagePosition >= 0) {
-                photoUrl = photoUrl.substring(storagePosition);
-            }
-        }
+        servicesElement.className = names.length ? "scrolling" : "";
+
+        var photoUrl = normalizePhotoUrl(data.officer_photo_url);
 
         if (photoUrl && photoUrl !== lastPhoto) {
             lastPhoto = photoUrl;
+
             photo.onload = function () {
                 photo.style.display = "inline";
                 fallback.style.display = "none";
             };
+
             photo.onerror = function () {
                 photo.style.display = "none";
                 fallback.style.display = "block";
             };
-            photo.src = lastPhoto;
-        }
 
-        setText("error", "");
+            photo.src = photoUrl;
+        }
     }
 
     function scheduleRefresh(delay) {
-        if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+        if (refreshTimer !== null) {
+            window.clearTimeout(refreshTimer);
+        }
+
         refreshTimer = window.setTimeout(refresh, delay);
     }
 
     function refresh() {
-        var xhr;
         if (polling || !code) return;
 
         polling = true;
-        xhr = new XMLHttpRequest();
+
+        var xhr = new XMLHttpRequest();
+        var completed = false;
+        var watchdog = null;
+
+        function finish(success, message, delay) {
+            if (completed) return;
+            completed = true;
+            polling = false;
+
+            if (watchdog !== null) {
+                window.clearTimeout(watchdog);
+            }
+
+            if (success) {
+                retryDelay = 3000;
+                setText("error", "");
+                scheduleRefresh(3000);
+            } else {
+                retryDelay = Math.min(retryDelay * 2, 15000);
+                setText("error", message);
+                scheduleRefresh(
+                    typeof delay === "number" ? delay : retryDelay
+                );
+            }
+        }
 
         xhr.onreadystatechange = function () {
-            var response;
-            if (xhr.readyState !== 4) return;
-            polling = false;
+            if (xhr.readyState !== 4 || completed) return;
+
             if (xhr.status === 429) {
-                var retryAfter = parseInt(xhr.getResponseHeader("Retry-After"), 10);
-                scheduleRefresh(isNaN(retryAfter) ? 10000 : Math.max(3000, retryAfter * 1000));
-                setText("error", "Counter temporarily busy. Retrying...");
+                var retryAfter = parseInt(
+                    xhr.getResponseHeader("Retry-After"),
+                    10
+                );
+
+                finish(
+                    false,
+                    "Counter temporarily busy. Retrying...",
+                    isNaN(retryAfter)
+                        ? 10000
+                        : Math.max(3000, retryAfter * 1000)
+                );
+
                 return;
             }
-            scheduleRefresh(xhr.status === 200 ? 3000 : Math.min(retryDelay * 2, 15000));
-            if (xhr.status === 200) retryDelay = 3000;
-            else retryDelay = Math.min(retryDelay * 2, 15000);
 
             if (xhr.status !== 200) {
-                setText("error", "Connection unavailable. Retrying...");
+                finish(false, "Connection unavailable. Retrying...");
                 return;
             }
 
             try {
-                response = JSON.parse(xhr.responseText);
+                var response = JSON.parse(xhr.responseText);
+
                 if (!response.success || !response.data) {
-                    setText("error", response.message || "Counter unavailable.");
+                    finish(
+                        false,
+                        response.message || "Counter unavailable."
+                    );
                     return;
                 }
-                render(response.data);
+
+                if (serverRendered) {
+                    updateTicket(response.data.current_ticket);
+                } else {
+                    updateInitialInformation(response.data);
+                    serverRendered = true;
+                }
+
+                finish(true, "");
             } catch (e) {
-                setText("error", "Unable to read counter information.");
+                finish(false, "Unable to read counter information.");
             }
         };
 
@@ -433,31 +518,79 @@ html, body { margin:0; padding:0; width:100%; height:100%; background:#fafbfe; c
             true
         );
 
-        try {
-            xhr.timeout = 10000;
-            xhr.ontimeout = function () {
-                polling = false;
-                scheduleRefresh(5000);
-                setText("error", "Request timed out. Retrying...");
-            };
-        } catch (e) {}
+        watchdog = window.setTimeout(function () {
+            if (completed) return;
 
-        xhr.send(null);
+            finish(false, "Request timed out. Retrying...", 5000);
+
+            try {
+                xhr.abort();
+            } catch (e) {}
+        }, 10000);
+
+        try {
+            xhr.send(null);
+        } catch (e) {
+            finish(false, "Connection unavailable. Retrying...");
+        }
     }
 
-    code = (pathOfficerCode() || queryValue("officer")).replace(/^\s+|\s+$/g, "");
+    code = (pathOfficerCode() || queryValue("officer"))
+        .replace(/^\s+|\s+$/g, "");
 
     if (!/^[A-Za-z0-9_-]{1,50}$/.test(code)) {
         setText("error", "Invalid or missing officer code.");
         return;
     }
 
-    setText("officer-code", code.toUpperCase());
+    if (photo && fallback) {
+        photo.onload = function () {
+            photo.style.display = "inline";
+            fallback.style.display = "none";
+        };
+
+        photo.onerror = function () {
+            photo.style.display = "none";
+            fallback.style.display = "block";
+        };
+
+        if (photo.getAttribute("src")) {
+            lastPhoto = photo.getAttribute("src");
+
+            if (photo.complete) {
+                if (typeof photo.naturalWidth === "number" &&
+                    photo.naturalWidth === 0) {
+                    photo.onerror();
+                } else if (typeof photo.naturalWidth === "number" &&
+                           photo.naturalWidth > 0) {
+                    photo.onload();
+                }
+            }
+        }
+    }
+
+    var officerElement = document.getElementById("officer-code");
+    var officerText = officerElement
+        ? (officerElement.textContent || officerElement.innerText || "")
+        : "";
+
+    serverRendered =
+        officerText !== "----" &&
+        officerText.replace(/^\s+|\s+$/g, "") !== "";
+
+    if (!serverRendered) {
+        setText("officer-code", code.toUpperCase());
+    }
+
     refresh();
-    // Schedule the next request only after the previous one finishes.
-    window.addEventListener("pageshow", function () {
-        if (!polling) scheduleRefresh(3000);
-    });
+
+    if (window.addEventListener) {
+        window.addEventListener("pageshow", function () {
+            if (!polling) {
+                scheduleRefresh(3000);
+            }
+        }, false);
+    }
 })();
 </script>
 </body>
